@@ -6,6 +6,7 @@ import { getTranslation } from '../config/translations.js';
 import { formatPhoneNumber } from '../utils/phoneUtils.js';
 import { broadcastCallStatus } from '../websocket/liveCallServer.js';
 import { sendUpdateByUserId } from '../services/botService.js';
+import * as leadService from '../services/leadService.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -59,14 +60,20 @@ export const initiateCall = async (req, res) => {
             source: 'web'
         });
 
+        // CRITICAL: Sync call to Lead Journey / Timeline IMMEDIATELY
+        // This ensures the dashboard shows "Ringing" progress on the timeline instead of stale data from a previous call.
+        try {
+            await leadService.syncCallToLead(callRecord);
+            logger.info(`Early lead sync successful for Call ${callRecord.twilioCallSid}`);
+        } catch (leadErr) {
+            logger.error(`Early lead sync failed:`, leadErr);
+        }
+
         broadcastCallStatus(callRecord._id.toString(), 'started', {
             customerName: callRecord.customerName,
             phoneNumber: callRecord.phoneNumber,
             moduleName: module.name
         });
-
-        // Telegram Notification
-        await sendUpdateByUserId(userId, `CALL_STATUS: INITIATED\nMODULE: ${module.name.toUpperCase()}\nCUSTOMER: ${customerName.toUpperCase()}\nDEST: ${formattedPhone}`);
 
         res.json({ success: true, call: callRecord });
     } catch (error) {

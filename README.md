@@ -1,325 +1,154 @@
-<div align="center">
-  <img src="frontend/public/logo.png" alt="Vok.AI Logo" width="120"/>
-  
-  # Vok.AI
-  
-  **Voice-powered communication & productivity platform**
-  
-  Automated calling with AI-driven transcription and analytics
-  
-  [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen)](https://github.com/AbhigyanRaj/Vok.AI)
-  [![React](https://img.shields.io/badge/react-19-blue)](https://reactjs.org/)
-  [![Node.js](https://img.shields.io/badge/node.js-18+-green)](https://nodejs.org/)
-  [![MongoDB](https://img.shields.io/badge/mongodb-atlas-green)](https://www.mongodb.com/)
-</div>
+# Voicely.AI: Professional AI Voice Orchestration and Lead Management
+
+Voicely.AI is a sophisticated, enterprise-grade platform designed for automated voice interactions and intelligent lead journey tracking. By integrating high-performance LLMs with real-time telephony, Voicely.AI enables businesses to automate customer engagement, qualify leads through AI analysis, and manage lifecycle transitions with precision.
 
 ---
 
-## Overview
+## High-Level Design (HDL)
 
-**Vok.AI** automates high-volume phone outreach for businesses. Build configurable voice modules, place calls at scale, and receive AI-driven transcripts, summaries and analytics in real time—all from a single dashboard.
+The Voicely.AI architecture is built on a decoupled micro-service model, ensuring scalability and low-latency processing for real-time voice streams. The system orchestrates interactions between a reactive frontend, a transactional backend, and a suite of third-party AI and communication services.
 
-### Features
-
-- Visual module builder with multi-step question flows
-- Automated outbound calling via Twilio
-- Real-time speech-to-text transcription (OpenAI Whisper)
-- GPT-based summaries and sentiment analytics
-- Token-based billing (5 tokens per call)
-- Google OAuth with JWT authentication
-
----
-
-## System architecture
+### System Architecture Diagram
 
 ```mermaid
-graph TB
-  subgraph Frontend
-    A[React 19 / Vite / Tailwind]
-  end
-  subgraph Backend
-    B(Node.js 18 / Express) --> C[(MongoDB Atlas)]
-    B --> D(Twilio Voice)
-    B --> E(OpenAI Whisper & GPT-4)
-    B --> F(ElevenLabs TTS)
-  end
-  A --> B
+graph TD
+    subgraph Client_Layer [Client Layer]
+        FE[React Frontend]
+    end
+
+    subgraph Orchestration_Layer [Orchestration Layer]
+        API[Express API Gateway]
+        WS[WebSocket Stream Server]
+        BOT[Telegram Bot Service]
+        SCHED[Intelligent Scheduler]
+    end
+
+    subgraph Data_Layer [Data Layer]
+        DB[(MongoDB)]
+        CACHE[Audio Cache / Static Assets]
+    end
+
+    subgraph External_Services [External AI & Telephony]
+        TW[Twilio Voice API]
+        GQ[Groq LLM Engine]
+        TF[Telegram API]
+        TTS[Google/ElevenLabs TTS]
+    end
+
+    FE <--> API
+    FE <--> WS
+    API <--> DB
+    API <--> TW
+    API <--> GQ
+    API <--> TTS
+    WS <--> TW
+    BOT <--> API
+    BOT <--> TF
+    SCHED <--> API
 ```
+
+### Core Components
+
+#### 1. API Orchestration Layer
+The backend, built on Node.js and Express, serves as the central nervous system. It handles authentication, lead management, workspace isolation, and call routing. It enforces strict environment validation and manages the initialization of all dependent services.
+
+#### 2. Real-Time Media Streaming
+Utilizing WebSockets, the system establishes bidirectional media streams with Twilio. This allows for near-instantaneous transcription and response generation, enabling natural-sounding conversations between the AI agent and the customer.
+
+#### 3. AI Evaluation Engine
+Voicely.AI leverages the Groq LLM engine to perform deep analysis of call transcripts. Post-call, the engine evaluates customer intent, extracts key information, and assigns semantic labels (e.g., "Warm Lead", "Positive Interest") to the lead's journey.
+
+#### 4. Lead Journey Tracking
+A proprietary tracking system that models the lifecycle of a lead through a strict, 4-stage progression:
+- **Initiated**: The trigger event for engagement.
+- **Picked Up**: Verification of successful connection.
+- **Outcome (Semantic Label)**: AI-driven qualification results.
+- **Completed**: Final state of the interaction including duration and summary.
 
 ---
 
-## Quick start
+## Technical Stack
+
+- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, Mermaid.js (for visualization).
+- **Backend**: Node.js, Express, WebSocket (ws), Mongoose.
+- **Database**: MongoDB (Atlas/Local).
+- **Voice Stack**: Twilio Voice, Media Streams.
+- **AI Core**: Groq SDK (Llama 3/70B models), Google Cloud TTS, ElevenLabs.
+- **Messaging**: Telegram Bot API.
+
+---
+
+## Core Features
+
+- **Autonomous Call Orchestration**: Programmatic initiation and management of outbound/inbound calls via Twilio.
+- **Intelligent Transcription**: Real-time conversion of audio streams to text for instant processing.
+- **Semantic Lead Analysis**: Post-call evaluation that transforms raw data into actionable business intelligence.
+- **Telegram Command Center**: A fully integrated bot that provides status updates and allows for remote call management.
+- **Strict Lifecycle Journey**: A high-reliability visualization tool for tracking lead progress across multiple touchpoints.
+- **Shared Audio Library**: Cached TTS assets to reduce latency and API consumption.
+
+---
+
+## Installation and Setup
 
 ### Prerequisites
+- Node.js (version 18.x or higher)
+- MongoDB (running instance)
+- Twilio Account (with a verified number)
+- Groq API Key
+- Telegram Bot Token
 
-- Node.js 18+
-- MongoDB Atlas account
-- Twilio account with phone number
-- OpenAI API key
-- Google OAuth credentials
-
-### Installation
+### Environment Configuration
+Create a `.env` file in the `backend` directory with the following parameters:
 
 ```bash
-# Clone repository
-git clone https://github.com/AbhigyanRaj/Vok.AI.git && cd Vok.AI
-
-# Backend setup
-cd backend
-npm install
-cp env.example .env  # Edit .env with your credentials
-npm run dev
-
-# Frontend setup (new terminal)
-cd ../frontend
-npm install
-npm run dev
-```
-
-The API runs on `http://localhost:5001`; the web app on `http://localhost:5173` by default.
-
-### Environment variables
-
-<details>
-<summary>Backend (.env)</summary>
-
-```env
+# Server Configuration
 PORT=5001
 NODE_ENV=development
-BASE_URL=http://localhost:5001
+JWT_SECRET=your_secret_key
 
-MONGODB_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/vokai
+# Database
+MONGODB_URI=your_mongodb_connection_string
 
-JWT_SECRET=change_me
-GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your_secret
+# Twilio
+TWILIO_ACCOUNT_SID=your_sid
+TWILIO_AUTH_TOKEN=your_token
+TWILIO_PHONE_NUMBER=your_number
 
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_PHONE_NUMBER=+15551234567
+# AI Services
+GROQ_API_KEY=your_groq_key
+GOOGLE_APPLICATION_CREDENTIALS=path_to_json (Optional)
+ELEVENLABS_API_KEY=your_key (Optional)
 
-OPENAI_API_KEY=sk-...
-ELEVENLABS_API_KEY=sk_...
-```
-</details>
-
-<details>
-<summary>Frontend (.env)</summary>
-
-```env
-VITE_API_URL=http://localhost:5001/api
-VITE_GOOGLE_OAUTH_CLIENT_ID=xxx.apps.googleusercontent.com
-```
-</details>
-
----
-
-## Tech stack
-
-| Layer      | Technologies                                   |
-|------------|------------------------------------------------|
-| Frontend   | React 19, TypeScript, Vite, Tailwind CSS      |
-| Backend    | Node.js 18, Express, Mongoose                 |
-| Services   | Twilio Voice, OpenAI, ElevenLabs, Google OAuth |
-| Database   | MongoDB Atlas                                  |
-
----
-
-## Operational flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI as Web UI
-    participant API as API Server
-    participant Twilio
-    participant TTS as ElevenLabs
-    participant STT as OpenAI
-    participant DB as MongoDB
-
-    User->>UI: Build voice module
-    UI->>API: POST /modules
-    API->>DB: Store module
-
-    User->>UI: Start call
-    UI->>API: POST /calls/initiate
-    API->>TTS: Generate speech
-    API->>Twilio: Place call
-    Twilio-->>User: Call rings
-    Twilio->>STT: Stream audio
-    STT->>API: Transcript
-    API->>DB: Persist results
-    API-->>UI: Completion + analytics
+# Telegram
+TELEGRAM_BOT_TOKEN=your_bot_token
 ```
 
----
+### Deployment Steps
 
-## API endpoints
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/auth/google` | Google OAuth login |
-| `GET` | `/api/auth/me` | Get current user |
-| `POST` | `/api/auth/buy-tokens` | Purchase tokens |
-
-### Module management
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/modules` | Get user modules |
-| `POST` | `/api/modules` | Create new module |
-| `PUT` | `/api/modules/:id` | Update module |
-| `DELETE` | `/api/modules/:id` | Delete module |
-
-### Call processing
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/calls/initiate` | Start voice call |
-| `GET` | `/api/calls/history` | Get call history |
-| `POST` | `/api/calls/webhook` | Twilio webhook handler |
+1. **Clone the Repository**
+2. **Backend Setup**:
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+3. **Frontend Setup**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+4. **Tunneling (Required for Twilio Webhooks)**:
+   ```bash
+   ngrok http 5001
+   ```
+   Update the Twilio console and project environment with the ngrok URL.
 
 ---
 
-## Database schema
+## Strategic High-Level Design (HDL) Philosophy
 
-### Users
-```javascript
-{
-  email: String (unique),
-  name: String,
-  tokens: Number (default: 100),
-  googleId: String,
-  totalCallsMade: Number,
-  subscription: 'free' | 'basic' | 'premium'
-}
-```
+Voicely.AI is designed with a "Fail-Fast and Notify" philosophy. All critical stages of the call lifecycle are monitored for failure (e.g., Busy, No Answer). When a failure occurs, the system preserves the state, updates the Lead Journey with a failure status (represented visually in yellow), and triggers an immediate notification via the Telegram Command Center. This ensures that no lead is lost due to technical or connection issues.
 
-### Modules
-```javascript
-{
-  userId: ObjectId,
-  name: String,
-  type: 'loan' | 'credit_card' | 'custom',
-  questions: [{
-    question: String,
-    order: Number,
-    required: Boolean
-  }],
-  totalCalls: Number,
-  successfulCalls: Number
-}
-```
-
-### Calls
-```javascript
-{
-  userId: ObjectId,
-  moduleId: ObjectId,
-  customerName: String,
-  phoneNumber: String,
-  status: String,
-  duration: Number,
-  transcription: String,
-  summary: String,
-  tokensUsed: Number (default: 5)
-}
-```
-
----
-
-## Voice system
-
-### Hybrid TTS strategy
-| Priority | Use case | Service |
-|----------|----------|---------|
-| High | Greeting, first question, outro | ElevenLabs |
-| Medium | Key questions | ElevenLabs (if available) |
-| Low | Confirmations, decline | Twilio TTS |
-
-### Rate limits
-- Per call: 3 ElevenLabs requests max
-- Per minute: 5 requests max
-- Per hour: 20 requests max
-- Fallback: Automatic Twilio TTS
-
----
-
-## Deployment
-
-| Component | Platform | URL |
-|-----------|----------|-----|
-| Backend   | Render   | https://vok-ai.onrender.com |
-| Frontend  | Vercel   | https://vok-ai.vercel.app |
-| Database  | MongoDB Atlas | Cloud hosted |
-
-### Production environment variables
-```env
-NODE_ENV=production
-BASE_URL=https://vok-ai.onrender.com
-FRONTEND_URL=https://vok-ai.vercel.app
-```
-
----
-
-## Development
-
-### Health check endpoints
-```bash
-# General health
-curl https://vok-ai.onrender.com/api/health
-
-# Database status
-curl https://vok-ai.onrender.com/api/db/status
-
-# Voice system health
-curl https://vok-ai.onrender.com/api/calls/voices/health
-```
-
-### Local development with ngrok
-```bash
-# Install ngrok
-brew install ngrok
-
-# Start backend
-npm run dev
-
-# Expose to internet (new terminal)
-ngrok http 5001
-
-# Update BASE_URL with ngrok URL
-export BASE_URL=https://abc123.ngrok.io
-```
-
----
-
-## Security
-
-- JWT authentication with secure token-based auth
-- Google OAuth for trusted authentication
-- Rate limiting to prevent API abuse
-- CORS protection for cross-origin security
-- Helmet security headers
-- Input validation and request sanitization
-
----
-
-## Contributing
-
-Contributions are welcome. Please fork the repository, create a feature branch, commit your changes and open a pull request.
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
----
-
-<div align="center">
-  
-  **Built by [Abhigyan Raj](https://github.com/AbhigyanRaj) | IIIT Delhi**
-  
-  [![GitHub](https://img.shields.io/badge/GitHub-AbhigyanRaj-black?style=flat&logo=github)](https://github.com/AbhigyanRaj)
-  [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://linkedin.com/in/abhigyanraj)
-  
-</div>
+The data model enforces strict relational integrity between Workspace, Lead, and Call entities, allowing for complex multi-tenant operations while maintaining absolute data isolation.
