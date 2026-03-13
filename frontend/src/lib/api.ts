@@ -1,7 +1,7 @@
 // Helper to get API base URL dynamically
 export const getApiBaseUrl = () => {
   if (process.env.NODE_ENV === 'production') {
-    return 'https://vok-ai.onrender.com/api';
+    return 'https://voicely-api-kbwf.onrender.com/api';
   }
   
   // In development, handle ngrok or localhost
@@ -16,7 +16,7 @@ export const getApiBaseUrl = () => {
 // Helper to get WS base URL dynamically
 export const getWsBaseUrl = () => {
   const isProd = process.env.NODE_ENV === 'production';
-  const apiHost = isProd ? 'vok-ai.onrender.com' : 'localhost:5001';
+  const apiHost = isProd ? 'voicely-api-kbwf.onrender.com' : 'localhost:5001';
   
   // If we're accessed via an ngrok URL (non-localhost), use that host for WS too
   if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {

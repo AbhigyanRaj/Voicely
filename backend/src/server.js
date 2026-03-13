@@ -89,7 +89,7 @@ app.use((req, res, next) => {
 // CORS configuration - Allow all origins in development
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
-    ? ['https://vok-ai.vercel.app', 'https://vok-ai.onrender.com', 'http://localhost:5173']
+    ? ['https://voicelyy.vercel.app', 'https://voicely-api-kbwf.onrender.com', 'http://localhost:5173']
     : true, // Allow all origins in development
   credentials: true,
   optionsSuccessStatus: 200,
