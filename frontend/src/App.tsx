@@ -11,7 +11,7 @@ import { AuthProvider } from './contexts/AuthContext';
 
 function App() {
   // Updated for Vercel deployment with proper environment variables
-  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE";
+  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
   
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
