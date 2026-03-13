@@ -1,0 +1,23 @@
+{
+  "name": "vokai",
+  "version": "1.0.0",
+  "description": "Vok.AI - Voice AI Platform",
+  "private": true,
+  "scripts": {
+    "dev": "cd backend && npm run dev",
+    "start": "cd backend && npm start",
+    "install-backend": "cd backend && npm install",
+    "install-frontend": "cd frontend && npm install",
+    "install-all": "npm run install-backend && npm run install-frontend"
+  },
+  "keywords": [
+    "voice",
+    "ai",
+    "platform"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ngrok": "^5.0.0-beta.2"
+  }
+}
