@@ -12,38 +12,55 @@ The Voicely.AI architecture is built on a decoupled micro-service model, ensurin
 
 ```mermaid
 graph TD
-    subgraph Client_Layer [Client Layer]
-        FE[React Frontend]
+    subgraph Client_Layer [Client Layer - React & Vite]
+        FE[Reactive Frontend]
+        DASH[Analytics Dashboard]
+        WS_FE[Live Call WebSocket]
     end
 
-    subgraph Orchestration_Layer [Orchestration Layer]
-        API[Express API Gateway]
-        WS[WebSocket Stream Server]
+    subgraph Orchestration_Layer [Orchestration Layer - Node.js/Express]
+        API[API Gateway]
+        MEDIA_WS[Media Stream WebSocket Hub]
+        LIVE_WS[Live Call Sync Server]
         BOT[Telegram Bot Service]
-        SCHED[Intelligent Scheduler]
+        SCHED[Intelligent Call Scheduler]
     end
 
-    subgraph Data_Layer [Data Layer]
-        DB[(MongoDB)]
-        CACHE[Audio Cache / Static Assets]
+    subgraph AI_Brain_Layer [AI Processing Layer]
+        STT[Deepgram STT - Nova 3]
+        GEMINI[Gemini Flash Lite - LLM Brain]
+        TTS[Google/Sarvam TTS Engine]
+        ANALYTICS[Post-Call Analysis Engine]
     end
 
-    subgraph External_Services [External AI & Telephony]
+    subgraph Data_Layer [Persistence & Cache]
+        DB[(MongoDB Atlas)]
+        CACHE[Shared Audio Library]
+    end
+
+    subgraph Telephony_Layer [External Telephony]
         TW[Twilio Voice API]
-        GQ[Groq LLM Engine]
-        TF[Telegram API]
-        TTS[Google/ElevenLabs TTS]
+        STREAM[Real-time Media Stream]
     end
 
+    %% Flow Connections
     FE <--> API
-    FE <--> WS
+    FE <--> LIVE_WS
     API <--> DB
     API <--> TW
-    API <--> GQ
-    API <--> TTS
-    WS <--> TW
+    
+    TW <--> STREAM
+    STREAM <--> MEDIA_WS
+    
+    MEDIA_WS <--> STT
+    MEDIA_WS <--> GEMINI
+    MEDIA_WS <--> TTS
+    
+    LIVE_WS <--> MEDIA_WS
+    ANALYTICS <--> GEMINI
+    ANALYTICS <--> DB
+    
     BOT <--> API
-    BOT <--> TF
     SCHED <--> API
 ```
 
