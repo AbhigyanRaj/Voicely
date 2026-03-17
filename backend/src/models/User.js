@@ -65,6 +65,7 @@ const userSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+  collection: 'voicely_users'
 });
 
 // Static method to find user by email

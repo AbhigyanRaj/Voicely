@@ -9,8 +9,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * Converts natural language into structured call initiation data
  */
 export const parseTelegramRequest = async (text, userContext) => {
-    const { activeWorkspace, email } = userContext;
-    const category = activeWorkspace?.category || 'startup';
+    const { currentWorkspace, email } = userContext;
+    const category = currentWorkspace?.category || 'startup';
     
     logger.info(`Intelligent Parsing Request from ${email}: "${text}" [Context: ${category}]`);
 
@@ -33,14 +33,14 @@ export const parseTelegramRequest = async (text, userContext) => {
       "action": "INITIATE_CALL" | "UNKNOWN",
       "customerName": "Name of the person to call",
       "phoneNumber": "10-digit phone number",
-      "moduleQuery": "Key terms to find the right voice module (e.g., 'real estate', 'clinic', 'follow up')",
+      "agentQuery": "Key terms to find the right voice agent (e.g., 'real estate', 'clinic', 'follow up')",
       "missingDetails": ["List of details missing like 'phone number' or 'name'"]
     }
 
     RULES:
     1. If the user mentions a name, extract it.
     2. If the user mentions a phone number, extract only the digits.
-    3. Use the message intent to create a 'moduleQuery'. For example, if they say "Regarding the flat", query is "flat" or "real estate".
+    3. Use the message intent to create an 'agentQuery'. For example, if they say "Regarding the flat", query is "flat" or "real estate".
     4. If the message is just a greeting or unrelated, set action to UNKNOWN.
     5. Return ONLY the raw JSON string.
     `;
@@ -58,13 +58,14 @@ export const parseTelegramRequest = async (text, userContext) => {
         if (parsed.action === 'INITIATE_CALL') {
             let modules = [];
             
-            if (parsed.moduleQuery) {
+            const query = parsed.agentQuery || parsed.moduleQuery;
+            if (query) {
                 modules = await Module.find({ 
                     userId: userContext._id, 
                     isDeleted: false,
                     $or: [
-                        { name: { $regex: parsed.moduleQuery, $options: 'i' } },
-                        { type: { $regex: parsed.moduleQuery, $options: 'i' } }
+                        { name: { $regex: query, $options: 'i' } },
+                        { type: { $regex: query, $options: 'i' } }
                     ]
                 });
             }
@@ -87,10 +88,10 @@ export const parseTelegramRequest = async (text, userContext) => {
             }
             
             if (modules.length > 0) {
-                parsed.moduleId = modules[0]._id.toString();
-                parsed.moduleName = modules[0].name;
+                parsed.agentId = modules[0]._id.toString();
+                parsed.agentName = modules[0].name;
             } else {
-                parsed.missingDetails.push('voice module (no modules found in your account)');
+                parsed.missingDetails.push('voice agent (no agents found in your account)');
             }
         }
 
@@ -113,12 +114,12 @@ export const generateConfirmationMessage = (parsedData, workspaceName) => {
         return `I've noted you want to make a call, but I'm missing: ${parsedData.missingDetails.join(', ')}. Please provide these details.`;
     }
 
-    let msg = `🚀 **Ready to initiate call!**\n\n`;
-    msg += `👤 **Customer**: ${parsedData.customerName}\n`;
-    msg += `📞 **Phone**: ${parsedData.phoneNumber}\n`;
-    msg += `🤖 **Module**: ${parsedData.moduleName || 'Default Assistant'}\n`;
-    msg += `🏢 **Workspace**: ${workspaceName}\n\n`;
-    msg += `Shall I proceed with the call? Type **YES** to confirm.`;
+    let msg = `Ready to initiate call!\n\n`;
+    msg += `Customer: ${parsedData.customerName}\n`;
+    msg += `Phone: ${parsedData.phoneNumber}\n`;
+    msg += `Agent: ${parsedData.agentName || parsedData.moduleName || 'Default Assistant'}\n`;
+    msg += `Workspace: ${workspaceName}\n\n`;
+    msg += `Shall I proceed with the call? Type YES to confirm.`;
 
     return msg;
 };
