@@ -334,12 +334,22 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       const call = resData.call;
       setCallRecord(call);
 
+      // Use configured VITE_WS_URL environment variable, falling back to window.location host if not defined
+      let streamWsUrl = "";
+      let liveCallWsUrl = "";
+      const wsUrlConfig = import.meta.env.VITE_WS_URL;
+
+      if (wsUrlConfig) {
+        streamWsUrl = `${wsUrlConfig}/api/streams/browser`;
+        liveCallWsUrl = `${wsUrlConfig}/live-call?callId=${call._id}`;
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host.includes(':') ? 'localhost:5001' : window.location.host;
+        streamWsUrl = `${protocol}//${host}/api/streams/browser`;
+        liveCallWsUrl = `${protocol}//${host}/live-call?callId=${call._id}`;
+      }
+
       // 1. Establish Audio Stream Connection
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // Auto-extract host to maintain local dev and production compatibility
-      const host = window.location.host.includes(':') ? 'localhost:5001' : window.location.host;
-      
-      const streamWsUrl = `${protocol}//${host}/api/streams/browser`;
       const streamWs = new WebSocket(streamWsUrl);
       streamWsRef.current = streamWs;
 
@@ -382,7 +392,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       };
 
       // 2. Establish liveCall dashboard sync transcript connection
-      const liveCallWsUrl = `${protocol}//${host}/live-call?callId=${call._id}`;
       const liveCallWs = new WebSocket(liveCallWsUrl);
       liveCallWsRef.current = liveCallWs;
 
