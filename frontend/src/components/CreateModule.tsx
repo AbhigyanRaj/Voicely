@@ -33,13 +33,13 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
   const [questions, setQuestions] = useState<string[]>([""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const [translating, setTranslating] = useState<number | null>(null);
 
-  const [ttsProvider, setTtsProvider] = useState<"google" | "sarvam">("google");
-  const [selectedLanguage, setSelectedLanguage] = useState("en-IN");
-  const [selectedVoice, setSelectedVoice] = useState("NEERJA");
+  const [ttsProvider, setTtsProvider] = useState<"google" | "sarvam">("sarvam");
+  const [selectedLanguage, setSelectedLanguage] = useState("hi-IN");
+  const [selectedVoice, setSelectedVoice] = useState("anushka");
 
-  // Agent Skills / Features (New)
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
 
   const features = [
@@ -127,6 +127,7 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
     if (!user) return setError("Session expired. Please sign in.");
     
     setLoading(true);
+    setError("");
     try {
       await auth.addVoiceModule(
         moduleName.trim(), 
@@ -136,54 +137,83 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
         selectedLanguage, 
         selectedVoice
       );
-      // setSuccess("Agent deployed successfully!"); // Removed unused success message for cleaner UX
+      setSuccess(true);
+      setLoading(false);
       setTimeout(() => {
         onClose();
-        // window.location.reload(); // Removed reload for smoother UX, usually handled by parent refresh logic
         if (typeof window !== 'undefined') window.location.href = '/modules'; 
       }, 1500);
     } catch (error) {
       setError("Deployment failed. Try again.");
-    } finally {
       setLoading(false);
     }
   };
 
-  const StepIndicator = () => (
-    <div className="flex items-center justify-center mb-10 gap-16">
-      {[
-        { id: 'brand', icon: <Briefcase className="w-3.5 h-3.5" /> },
-        { id: 'persona', icon: <BrainCircuit className="w-3.5 h-3.5" /> },
-        { id: 'voice', icon: <Waves className="w-3.5 h-3.5" /> },
-        { id: 'features', icon: <Zap className="w-3.5 h-3.5" /> }
-      ].map((step, i) => (
-        <div key={step.id} className="relative flex flex-col items-center">
-          <div className={`flex flex-col items-center gap-2 group cursor-pointer transition-all duration-300 ${currentStep === step.id ? 'opacity-100' : 'opacity-20 hover:opacity-40'}`}
-               onClick={() => {
-                 const stepIdx = ['brand', 'persona', 'voice', 'features'].indexOf(currentStep);
-                 if (i < stepIdx) setCurrentStep(step.id as Step);
-               }}>
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 ${currentStep === step.id ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-zinc-900 text-zinc-400'}`}>
-              {step.icon}
-            </div>
-            <span className={`text-[9px] uppercase tracking-[0.2em] font-bold absolute -bottom-6 transition-all duration-300 ${currentStep === step.id ? 'text-blue-500 translate-y-0 opacity-100' : 'text-zinc-500 translate-y-1 opacity-0'}`}>{step.id}</span>
-          </div>
-          {i < 3 && (
-            <div className="absolute left-[calc(100%+8px)] top-5 w-8 h-[1px] bg-zinc-800" />
-          )}
+  const StepIndicator = () => {
+    const steps = [
+      { id: 'brand', label: 'Brand', icon: <Briefcase className="w-4 h-4" /> },
+      { id: 'persona', label: 'Persona', icon: <BrainCircuit className="w-4 h-4" /> },
+      { id: 'voice', label: 'Voice', icon: <Waves className="w-4 h-4" /> },
+      { id: 'features', label: 'Skills', icon: <Zap className="w-4 h-4" /> }
+    ];
+    const currentIdx = ['brand', 'persona', 'voice', 'features'].indexOf(currentStep);
+
+    return (
+      <div className="w-full flex items-center justify-between px-2 mb-12 relative">
+        {/* Connector Line in Background */}
+        <div className="absolute left-6 right-6 top-[20px] h-[2px] bg-zinc-800/80 -z-10 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-blue-500 transition-all duration-500 ease-out" 
+            style={{ width: `${(currentIdx / (steps.length - 1)) * 100}%` }}
+          />
         </div>
-      ))}
-    </div>
-  );
+
+        {steps.map((step, i) => {
+          const isActive = currentStep === step.id;
+          const isPassed = i < currentIdx;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => {
+                if (i < currentIdx) setCurrentStep(step.id as Step);
+              }}
+              disabled={i >= currentIdx}
+              className="flex flex-col items-center gap-2 group cursor-pointer focus:outline-none disabled:cursor-not-allowed"
+            >
+              <div 
+                className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-500 ${
+                  isActive 
+                    ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_20px_rgba(59,130,246,0.35)] scale-110' 
+                    : isPassed 
+                      ? 'bg-blue-950/60 border-blue-500/40 text-blue-400' 
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-500 group-hover:border-zinc-700 group-hover:text-zinc-400'
+                }`}
+              >
+                {step.icon}
+              </div>
+              <span 
+                className={`text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ${
+                  isActive ? 'text-blue-400' : isPassed ? 'text-blue-500/80' : 'text-zinc-500'
+                }`}
+              >
+                {step.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth="max-w-xl" className="bg-zinc-900/80 backdrop-blur-2xl">
-      <div className="relative p-6 md:p-12">
+    <Modal open={open} onClose={onClose} maxWidth="max-w-xl" className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+      <div className="relative p-6 sm:p-10">
         <div className="mb-10 text-center">
-          <h2 className="text-xl font-medium text-white tracking-tight mb-1.5">
+          <h2 className="text-xl font-semibold text-white tracking-tight mb-1.5">
             Configure Agent
           </h2>
-          <p className="text-zinc-400 text-[10px] font-bold tracking-[0.2em] opacity-80 uppercase">PHASE: {currentStep}</p>
+          <p className="text-zinc-500 text-[10px] font-bold tracking-[0.2em] opacity-80 uppercase">PHASE: {currentStep}</p>
         </div>
 
         <StepIndicator />
@@ -196,64 +226,80 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
           )}
 
           {currentStep === 'brand' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="relative group">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 flex flex-col items-center">
+              <div className="mb-2 p-5 rounded-[2rem] bg-blue-500/10 border border-blue-500/20 text-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.05)]">
+                <Briefcase className="w-10 h-10" />
+              </div>
+              
+              <div className="w-full relative group">
                 <input
                   autoFocus
                   type="text"
                   value={moduleName}
                   onChange={(e) => setModuleName(e.target.value)}
-                  className="w-full bg-transparent border-b border-zinc-900 py-4 text-white placeholder-zinc-800 focus:outline-none focus:border-blue-500/60 transition-all text-xl font-light tracking-tight text-center"
-                  placeholder="Enter Agent Name..."
+                  className="w-full bg-zinc-900/60 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all text-lg font-semibold tracking-tight text-center"
+                  placeholder="e.g. Athena Support Bot"
                 />
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-[1px] bg-blue-500 transition-all duration-500 group-focus-within:w-full opacity-40" />
               </div>
-              <p className="text-zinc-600 text-[10px] text-center tracking-widest uppercase font-medium opacity-40">
-                Identify your agent for business reporting.
+              
+              <p className="text-zinc-500 text-[10px] text-center tracking-[0.15em] uppercase font-bold opacity-80 leading-normal max-w-xs">
+                Identify your agent for business reporting and call logs.
               </p>
             </div>
           )}
 
           {currentStep === 'persona' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="space-y-4">
-                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] ml-2 opacity-80">Logic & Behavioral Prompt</p>
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Logic & Behavioral Instructions</p>
+                </div>
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
-                  rows={2}
-                  className="w-full bg-zinc-900/10 border border-zinc-900/50 p-6 rounded-[2rem] text-white placeholder-zinc-800 focus:outline-none focus:border-blue-500/30 transition-all text-sm resize-none tracking-tight leading-relaxed"
-                  placeholder='Describe how the AI should behave...'
+                  rows={3}
+                  className="w-full bg-zinc-950/45 border border-white/5 p-5 rounded-2xl text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm resize-none tracking-tight leading-relaxed font-medium"
+                  placeholder="Define your agent's personality, goal, guidelines, and context. (e.g. 'You are Neerja, a helpful customer service representative at Fortis Hospital. Be extremely polite...')"
                 />
               </div>
               
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-3">
-                  <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] opacity-80">Survey Questions</span>
-                  <button type="button" onClick={addQuestion} className="text-blue-500/80 hover:text-blue-400 text-[9px] font-bold tracking-widest transition-colors uppercase">Add +</button>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Qualification Questionnaire</span>
+                  <button 
+                    type="button" 
+                    onClick={addQuestion} 
+                    className="text-blue-400 hover:text-blue-300 text-[10px] font-bold tracking-wider transition-colors uppercase flex items-center gap-1"
+                  >
+                    <span>+ Add Question</span>
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="max-h-56 overflow-y-auto pr-1 flex flex-col gap-3">
                   {questions.map((q, i) => (
-                    <div key={i} className="flex gap-3 group items-center">
-                      <div className="relative flex-1 group">
+                    <div key={i} className="flex gap-3 group items-center animate-in fade-in slide-in-from-bottom-1 duration-300">
+                      <div className="relative flex-1">
                         <input
                           type="text"
                           value={q}
                           onChange={(e) => updateQuestion(i, e.target.value)}
-                          className="w-full bg-transparent border-b border-zinc-900/50 py-3 pr-8 text-white placeholder-zinc-800 text-xs focus:outline-none focus:border-blue-500/60 transition-all font-medium"
-                          placeholder={`Enter question ${i + 1}`}
+                          className="w-full bg-zinc-950/30 border border-white/5 rounded-xl pl-4 pr-10 py-3 text-white placeholder-zinc-650 text-xs focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all font-semibold"
+                          placeholder={`Question ${i + 1} (e.g., Are you currently experiencing any symptoms?)`}
                         />
                         <button
                           type="button"
                           onClick={() => translateToHindi(i)}
-                          className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-600 group-hover:text-blue-400 transition-colors"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-550 hover:text-blue-400 transition-colors p-1 rounded-md hover:bg-white/5"
+                          title="Translate to Hindi"
                         >
-                          {translating === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
+                          {translating === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                       {questions.length > 1 && (
-                        <button onClick={() => removeQuestion(i)} className="p-1.5 text-zinc-800 hover:text-red-500/40 transition-all">
-                          <X className="w-3 h-3" />
+                        <button 
+                          onClick={() => removeQuestion(i)} 
+                          className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all"
+                        >
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -264,64 +310,65 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
           )}
 
           {currentStep === 'voice' && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="flex justify-center gap-12">
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div className="flex justify-center gap-8">
                 {[
-                  { id: 'google', label: 'Google', desc: 'Ultra-Fast', icon: Zap },
-                  { id: 'sarvam', label: 'Sarvam', desc: 'Regional', icon: Waves },
+                  { id: 'sarvam', label: 'Sarvam AI', desc: 'Premium Regional Dialects', icon: Waves },
                 ].map((p) => (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => handleProviderChange(p.id as any)}
-                    className="flex flex-col items-center gap-3 group"
+                    className={`flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all duration-300 w-44 group ${
+                      ttsProvider === p.id 
+                        ? 'bg-blue-600/5 border-blue-500/50 shadow-[0_0_25px_rgba(59,130,246,0.1)]' 
+                        : 'bg-zinc-950/40 border-white/5 text-zinc-550 hover:border-zinc-800 hover:text-zinc-400'
+                    }`}
                   >
-                    <div className={`w-14 h-14 rounded-[1.5rem] flex items-center justify-center transition-all duration-500 border ${ttsProvider === p.id ? 'bg-blue-600 border-blue-500 text-white shadow-xl shadow-blue-500/40' : 'bg-zinc-950 border-zinc-900 text-zinc-600 hover:border-zinc-800 hover:text-zinc-400'}`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-500 ${ttsProvider === p.id ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-500'}`}>
                       <p.icon className="w-5 h-5" />
                     </div>
                     <div className="text-center">
-                      <p className={`text-[10px] font-bold tracking-widest uppercase transition-colors ${ttsProvider === p.id ? 'text-blue-400' : 'text-zinc-500'}`}>{p.label}</p>
-                      <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-tighter mt-1 opacity-60 leading-none">{p.desc}</p>
+                      <p className={`text-xs font-bold tracking-wide transition-colors ${ttsProvider === p.id ? 'text-blue-400' : 'text-zinc-400 group-hover:text-zinc-300'}`}>{p.label}</p>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider mt-1 opacity-70 leading-none">{p.desc}</p>
                     </div>
                   </button>
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-10 px-4">
-                <div className="space-y-4">
-                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] ml-0.5 opacity-80">Primary Language</p>
-                  <div className="relative group">
+              <div className="grid grid-cols-2 gap-6 px-2">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Primary Language</p>
+                  <div className="relative w-full">
                     <select
                       value={selectedLanguage}
                       onChange={(e) => setSelectedLanguage(e.target.value)}
-                      className="w-full bg-transparent border-b border-zinc-900 pb-3 text-white text-sm appearance-none cursor-pointer focus:outline-none focus:border-blue-500/60 transition-all font-medium pr-8"
+                      className="w-full h-10 pl-3 pr-8 bg-zinc-900 border border-white/5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 text-xs font-semibold cursor-pointer appearance-none"
                     >
                       {currentLanguages.map(l => (
-                        <option key={l.code} value={l.code} className="bg-zinc-950">{l.label}</option>
+                        <option key={l.code} value={l.code} className="bg-zinc-900 font-semibold">{l.label}</option>
                       ))}
                     </select>
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-700 group-hover:text-zinc-500 transition-colors">
-                      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-zinc-400">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-4">
-                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] ml-0.5 opacity-80">Voice Persona</p>
-                  <div className="relative group">
+
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Voice Persona</p>
+                  <div className="relative w-full">
                     <select
                       value={selectedVoice}
                       onChange={(e) => setSelectedVoice(e.target.value)}
-                      className="w-full bg-transparent border-b border-zinc-900 pb-3 text-white text-sm appearance-none cursor-pointer focus:outline-none focus:border-blue-500/60 transition-all font-medium pr-8"
+                      className="w-full h-10 pl-3 pr-8 bg-zinc-900 border border-white/5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 text-xs font-semibold cursor-pointer appearance-none"
                     >
                       {currentVoices.map(v => (
-                        <option key={v.id} value={v.id} className="bg-zinc-950">{v.label}</option>
+                        <option key={v.id} value={v.id} className="bg-zinc-900 font-semibold">{v.label}</option>
                       ))}
                     </select>
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-700 group-hover:text-zinc-500 transition-colors">
-                      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-zinc-400">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                     </div>
                   </div>
                 </div>
@@ -330,24 +377,40 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
           )}
 
           {currentStep === 'features' && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="grid grid-cols-2 gap-4">
-                {features.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => toggleFeature(f.id)}
-                    className={`p-4 rounded-[1.8rem] transition-all duration-300 flex items-center gap-4 border group ${selectedFeatures.includes(f.id) ? 'bg-blue-600/5 border-blue-500/50' : 'bg-transparent border-zinc-900 hover:border-zinc-800'}`}
-                  >
-                    <div className={`p-2.5 rounded-2xl transition-all ${selectedFeatures.includes(f.id) ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-600'}`}>
-                      {f.icon}
-                    </div>
-                    <span className={`text-[11px] font-bold tracking-tight transition-colors ${selectedFeatures.includes(f.id) ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-400'}`}>{f.name}</span>
-                  </button>
-                ))}
+                {features.map((f) => {
+                  const isSelected = selectedFeatures.includes(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => toggleFeature(f.id)}
+                      className={`p-4 rounded-2xl transition-all duration-300 flex items-start gap-4 border text-left group ${
+                        isSelected 
+                          ? 'bg-blue-600/5 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.08)]' 
+                          : 'bg-zinc-950/40 border-white/5 hover:border-zinc-800 hover:bg-zinc-900/40'
+                      }`}
+                    >
+                      <div className={`p-2.5 rounded-xl transition-all flex-shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-500'}`}>
+                        {f.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className={`block text-xs font-bold tracking-tight transition-colors ${isSelected ? 'text-blue-400' : 'text-zinc-300 group-hover:text-white'}`}>{f.name}</span>
+                        <span className="block text-[10px] text-zinc-500 mt-1 leading-normal font-medium">{f.desc}</span>
+                      </div>
+                      {isSelected && (
+                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 border border-blue-400/30">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="flex items-center justify-center gap-2.5 opacity-30">
+              <div className="flex items-center justify-center gap-2 opacity-30 mt-4">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                <p className="text-[10px] text-zinc-400 tracking-[0.1em] font-medium uppercase italic">Intelligent Analytics Linked</p>
+                <p className="text-[10px] text-zinc-400 tracking-[0.15em] font-bold uppercase italic">Intelligent Analytics Engine Auto-Linked</p>
               </div>
             </div>
           )}
@@ -366,10 +429,18 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
           <button
             onClick={currentStep === 'features' ? handleSubmit : nextStep}
             disabled={loading}
-            className={`min-w-[120px] py-3 px-6 rounded-full transition-all duration-500 font-bold text-[10px] tracking-[0.2em] uppercase shadow-lg ${loading ? 'bg-zinc-900 text-zinc-700' : 'bg-white text-black hover:bg-zinc-200 active:scale-95'}`}
+            className={`min-w-[120px] py-3.5 px-6 rounded-xl transition-all duration-500 font-bold text-[10px] tracking-[0.2em] uppercase shadow-lg ${
+              loading 
+                ? 'bg-zinc-900 text-zinc-700' 
+                : currentStep === 'features'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/20 active:scale-95'
+                  : 'bg-white text-black hover:bg-zinc-200 active:scale-95'
+            }`}
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+            ) : success ? (
+              'Deployed!'
             ) : currentStep === 'features' ? (
               'Deploy'
             ) : (

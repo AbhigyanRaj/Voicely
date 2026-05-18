@@ -29,7 +29,11 @@ class SarvamService extends EventEmitter {
             return null;
         }
 
+        const startTotal = performance.now();
+        logger.info(`[LATENCY TIMER] Starting Sarvam TTS synthesis for text: "${text}"`);
+
         try {
+            const startNetwork = performance.now();
             const response = await fetch(this.ttsUrl, {
                 method: 'POST',
                 headers: {
@@ -46,6 +50,9 @@ class SarvamService extends EventEmitter {
                 })
             });
 
+            const netDuration = performance.now() - startNetwork;
+            logger.info(`[LATENCY TIMER] Sarvam network request took ${netDuration.toFixed(1)}ms`);
+
             if (!response.ok) {
                 const errorText = await response.text();
                 logger.error('Sarvam API payload error:', errorText);
@@ -56,6 +63,7 @@ class SarvamService extends EventEmitter {
             const audioStr = data.audios?.[0];
             if (!audioStr) return null;
 
+            const startTranscode = performance.now();
             // Sarvam returns a full WAV file encoded in 22050Hz Linear PCM.
             // Twilio WebSockets strictly require raw 8000Hz 8-bit mulaw (headerless).
             // We use `wavefile` to transcode and extract the pure samples.
@@ -72,6 +80,11 @@ class SarvamService extends EventEmitter {
             // 3. Extract just the raw audio samples without the RIFF/WAVE header
             // wav.data.samples contains the raw Float64Array or Uint8Array.
             const rawAudioBuf = Buffer.from(wav.data.samples);
+            const transcodeDuration = performance.now() - startTranscode;
+            const totalDuration = performance.now() - startTotal;
+
+            logger.info(`[LATENCY TIMER] Wavefile transcode took ${transcodeDuration.toFixed(1)}ms`);
+            logger.info(`[LATENCY TIMER] Total Sarvam Synthesis finished in ${totalDuration.toFixed(1)}ms`);
 
             return rawAudioBuf.toString('base64');
         } catch (error) {
@@ -118,12 +131,10 @@ export class StreamingSarvamTTS extends EventEmitter {
     }
 
     checkBoundaries() {
-        // Split on Hindi full stop (।), English sentence markers, or natural pauses like commas
-        const boundaryTokens = /([।?!.]+\s+|,[\s]*)/; // Adjusted regex for comma handling
+        // 1. First check for punctuation boundaries (sentence endpoints or commas)
+        const boundaryTokens = /([।?!.]+\s+|,[\s]*)/;
         const parts = this.textBuffer.split(boundaryTokens);
 
-        // The split will result in [text, delimiter, text, delimiter, ..., last_text_or_delimiter]
-        // We need at least 3 parts to form a complete sentence (text + delimiter + remaining_text)
         if (parts.length > 2) {
             let i = 0;
             while (i < parts.length - 2) { // Process pairs of (text, delimiter)
@@ -133,10 +144,22 @@ export class StreamingSarvamTTS extends EventEmitter {
                 }
                 i += 2;
             }
-            // The last part (or last two if the last is a delimiter) remains in the buffer
-            // Join any remaining parts back into textBuffer
             this.textBuffer = parts.slice(i).join('');
             this._processQueue();
+            return;
+        }
+
+        // 2. Low-Latency Trigger: Slice off word chunks early (4 words) to hide streaming delays
+        const words = this.textBuffer.trim().split(/\s+/);
+        if (words.length >= 5) {
+            const phrase = words.slice(0, 4).join(' ');
+            this.textBuffer = words.slice(4).join(' ') + ' '; // Put remaining back with a trailing space
+            
+            if (phrase.trim().length > 0) {
+                logger.debug(`Low-latency trigger: Synthesizing early phrase chunk: "${phrase}"`);
+                this.audioQueue.push(phrase.trim());
+                this._processQueue();
+            }
         }
     }
 

@@ -12,6 +12,7 @@ router.post('/status', callController.handleStatus);
 // API Routes
 router.use(protect);
 router.post('/initiate', callController.initiateCall);
+router.post('/browser-sandbox', callController.initiateBrowserSandboxCall);
 router.get('/history', callController.getCallHistory);
 router.get('/:id', callController.getCallById);
 

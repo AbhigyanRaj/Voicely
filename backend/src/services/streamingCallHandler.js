@@ -81,6 +81,45 @@ CRUCIAL RULES:
   }
 
   /**
+   * Start the initial greeting
+   */
+  async startGreeting() {
+    if (this.state !== 'IDLE') return;
+    this.state = 'THINKING';
+    
+    try {
+      logger.info(`Triggering initial greeting for ${this.customerName}...`);
+      this.emit('aiThinking');
+      
+      // Feed a special prompt to Gemini to get the first greeting
+      const greeting = await generateConversationalResponseStream(
+        this.systemPrompt,
+        "[NEW CALL STARTED - NO USER INPUT YET. PLEASE PROVIDE YOUR INITIAL GREETING BASED ON THE PERSONA. INTRODUCE YOURSELF.]",
+        (chunkText) => {
+          if (this.state !== 'SPEAKING') {
+            this.state = 'SPEAKING';
+          }
+          this.emit('aiResponseChunk', chunkText);
+        }
+      );
+
+      this.chatHistory += `\nAI: ${greeting}`;
+      
+      // Update call transcript in DB
+      if (this.call) {
+        this.call.transcription = this.chatHistory;
+        await this.call.save();
+      }
+
+      this.emit('aiResponseComplete', greeting);
+    } catch (error) {
+      logger.error('Error in initial greeting', error);
+    } finally {
+      this.state = 'IDLE';
+    }
+  }
+
+  /**
    * Process partial transcript for "Pre-thinking"
    */
   async processPartialTranscript(transcript, confidence) {
@@ -107,6 +146,9 @@ CRUCIAL RULES:
     if (transcript.trim() === this.lastProcessedTranscript) return;
     this.lastProcessedTranscript = transcript.trim();
 
+    const startTotal = performance.now();
+    logger.info(`[LATENCY TIMER] processFinalTranscript starting for user input: "${transcript}"`);
+
     this.state = 'THINKING';
 
     try {
@@ -117,6 +159,7 @@ CRUCIAL RULES:
 
       this.emit('aiThinking');
 
+      const startLLM = performance.now();
       // Stream the AI response
       const fullResponse = await generateConversationalResponseStream(
         this.systemPrompt,
@@ -124,22 +167,36 @@ CRUCIAL RULES:
         (chunkText) => {
           if (this.state !== 'SPEAKING') {
             this.state = 'SPEAKING';
+            const timeToFirstSpeak = performance.now() - startTotal;
+            logger.info(`[LATENCY TIMER] First speech output triggered in ${timeToFirstSpeak.toFixed(1)}ms from user final transcript!`);
           }
           this.emit('aiResponseChunk', chunkText);
         }
       );
 
+      const llmDuration = performance.now() - startLLM;
+      logger.info(`[LATENCY TIMER] LLM generation complete in ${llmDuration.toFixed(1)}ms`);
+
       // Save AI's response to history
       this.chatHistory += `\nAI: ${fullResponse}`;
       logger.info(`AI: "${fullResponse}"`);
 
+      const startSave = performance.now();
       // Update call transcript in DB
       if (this.call) {
         this.call.transcription = this.chatHistory;
         await this.call.save();
       }
+      const saveDuration = performance.now() - startSave;
+      logger.info(`[LATENCY TIMER] Database transcription save took ${saveDuration.toFixed(1)}ms`);
 
+      const startComplete = performance.now();
       this.emit('aiResponseComplete', fullResponse);
+      const completeDuration = performance.now() - startComplete;
+      logger.info(`[LATENCY TIMER] aiResponseComplete emission took ${completeDuration.toFixed(1)}ms`);
+
+      const totalDuration = performance.now() - startTotal;
+      logger.info(`[LATENCY TIMER] Total processFinalTranscript finished in ${totalDuration.toFixed(1)}ms`);
 
     } catch (error) {
       logger.error('Error in conversational processing', error);

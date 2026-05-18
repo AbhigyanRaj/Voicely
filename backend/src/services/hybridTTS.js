@@ -177,9 +177,19 @@ export async function generateHybridTTS(text, voiceType = DEFAULT_VOICE, options
   }
 
   // Try services in priority order
-  const services = forceService
-    ? [forceService]
-    : [provider, 'twilio'];
+  const availableServices = [];
+  if (provider === 'google') availableServices.push('google');
+  if (provider === 'sarvam') availableServices.push('sarvam');
+  if (provider === 'elevenlabs') availableServices.push('elevenlabs');
+
+  // Add fallbacks that aren't the primary
+  if (provider !== 'sarvam' && process.env.SARVAM_API_KEY) availableServices.push('sarvam');
+  if (provider !== 'elevenlabs' && process.env.ELEVENLABS_API_KEY) availableServices.push('elevenlabs');
+  if (provider !== 'google' && process.env.GOOGLE_TTS_API_KEY) availableServices.push('google');
+  
+  availableServices.push('twilio'); // Absolute fallback
+
+  const services = forceService ? [forceService] : availableServices;
 
   for (const service of services) {
     try {

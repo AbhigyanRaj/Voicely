@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import Modal from "./ui/modal";
-import { UserPlus, Layers, Mic, BarChart3, Zap, Shield, ArrowRight, LogIn } from "lucide-react";
+import { UserPlus, Layers, Mic, BarChart3, Zap, Shield, ArrowRight, LogIn, Eye, EyeOff } from "lucide-react";
 import CreateModule from "./CreateModule";
 import ContactUploader from "./ContactUploader";
+import { VoiceSandbox } from "./VoiceSandbox";
 import { useAuth } from "../contexts/AuthContext";
 import * as auth from "../lib/auth";
 
@@ -26,6 +27,7 @@ const Hero: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [authModal, setAuthModal] = useState<null | 'signup' | 'login'>(null);
   const [createModuleOpen, setCreateModuleOpen] = useState(false);
+  const [sandboxOpen, setSandboxOpen] = useState(false);
   const [selectedModule, setSelectedModule] = useState<any>(null);
   const [userModules, setUserModules] = useState<any[]>([]);
   
@@ -35,11 +37,10 @@ const Hero: React.FC = () => {
   const [selectedLanguage, setSelectedLanguage] = useState('en-IN');
   const [selectedModel, setSelectedModel] = useState('gemini');
 
-  const { user, signIn, loading } = useAuth();
+  const { user, signIn, emailRegister, emailLogin, loading } = useAuth();
   
   const loadUserModules = useCallback(async () => {
     if (!user) return;
-    
     try {
       const modules = await auth.getUserModules();
       setUserModules(modules);
@@ -48,7 +49,6 @@ const Hero: React.FC = () => {
     }
   }, [user]);
 
-  // Load user modules when modal opens
   useEffect(() => {
     if (modalOpen && user) {
       loadUserModules();
@@ -56,13 +56,45 @@ const Hero: React.FC = () => {
     }
   }, [modalOpen, user, loadUserModules]);
 
-  const handleSignIn = async () => {
+  // Auth form state
+  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  const openAuth = (tab: 'login' | 'signup') => {
+    setAuthTab(tab);
+    setAuthError('');
+    setAuthName('');
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthModal(tab);
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSubmitting(true);
     try {
-      await signIn();
+      if (authTab === 'signup') {
+        await emailRegister(authName.trim(), authEmail.trim(), authPassword);
+      } else {
+        await emailLogin(authEmail.trim(), authPassword);
+      }
       setAuthModal(null);
-    } catch (error) {
-      console.error('Sign in failed:', error);
+    } catch (err: any) {
+      setAuthError(err.message || 'Something went wrong.');
+    } finally {
+      setAuthSubmitting(false);
     }
+  };
+
+  const handleGoogle = () => {
+    signIn();
+    setAuthModal(null);
   };
 
   const handleModalClose = () => {
@@ -116,7 +148,7 @@ const Hero: React.FC = () => {
             {!user ? (
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button 
-                  onClick={() => setAuthModal('signup')}
+                  onClick={() => openAuth('signup')}
                   className="h-14 px-8 rounded-2xl bg-white text-black hover:bg-zinc-200 font-bold text-sm shadow-[0_20px_40px_-15px_rgba(255,255,255,0.2)] transition-all hover:scale-105 active:scale-95"
                 >
                   <UserPlus className="w-4 h-4 mr-2" />
@@ -124,7 +156,7 @@ const Hero: React.FC = () => {
                 </Button>
                 <Button 
                   variant="outline"
-                  onClick={() => setAuthModal('login')}
+                  onClick={() => openAuth('login')}
                   className="h-14 px-8 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-white hover:bg-white/10 font-bold text-sm transition-all"
                 >
                   <LogIn className="w-4 h-4 mr-2" />
@@ -133,11 +165,11 @@ const Hero: React.FC = () => {
               </div>
             ) : (
               <Button 
-                onClick={() => setCreateModuleOpen(true)}
+                onClick={() => setSandboxOpen(true)}
                 className="h-14 px-10 rounded-2xl bg-white text-black hover:bg-zinc-200 font-bold text-sm shadow-[0_20px_40px_-15px_rgba(255,255,255,0.2)] transition-all hover:scale-105 active:scale-95"
               >
-                <Layers className="w-4 h-4 mr-2" />
-                CREATE VOICE AGENT
+                <Mic className="w-4 h-4 mr-2 text-indigo-600 animate-pulse" />
+                TRY VOICE AGENT
               </Button>
             )}
             
@@ -191,10 +223,10 @@ const Hero: React.FC = () => {
         </div>
 
         {/* Modals */}
-        <Modal open={modalOpen} onClose={handleModalClose}>
-          <div className="w-full max-w-md mx-auto">
+        <Modal open={modalOpen} onClose={handleModalClose} maxWidth="max-w-lg">
+          <div className="w-full p-6 sm:p-8 flex flex-col">
             <h2 className="text-xl font-bold text-white mb-2 text-center uppercase tracking-tighter">Get Started</h2>
-            <p className="text-xs text-zinc-500 mb-8 text-center font-medium">Upload your lead data to begin the evolution.</p>
+            <p className="text-xs text-zinc-500 mb-6 text-center font-medium">Upload your lead data to begin the evolution.</p>
             <ContactUploader
               userModules={userModules}
               selectedModule={selectedModule}
@@ -216,34 +248,101 @@ const Hero: React.FC = () => {
         </Modal>
 
         <Modal open={!!authModal} onClose={() => setAuthModal(null)}>
-          <div className="w-full max-w-sm mx-auto p-4 flex flex-col items-center">
-            <div className="w-16 h-16 bg-white/5 rounded-[2rem] flex items-center justify-center mb-6 ring-1 ring-white/10">
-              <UserPlus className="w-8 h-8 text-white/50" />
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2 text-center tracking-tight">{authModal === 'signup' ? 'Join Voicely' : 'Welcome Back'}</h2>
-            <p className="text-zinc-500 text-sm mb-8 text-center font-medium">Connect your account via secure channel</p>
-            <div className="w-full space-y-4">
-              <Button
-                className="w-full h-14 justify-center bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl transition-all shadow-xl"
-                onClick={handleSignIn}
-                disabled={loading}
+          <div className="w-full max-w-sm mx-auto p-8 flex flex-col items-center">
+            <h2 className="text-2xl font-bold text-white mb-1 tracking-tight">
+              {authTab === 'login' ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            <p className="text-zinc-500 text-sm mb-6 text-center">
+              {authTab === 'login' ? 'Sign in to your Voicely account' : 'Get started with Voicely for free'}
+            </p>
+
+            {/* Tab switcher */}
+            <div className="w-full flex bg-white/5 rounded-xl p-1 mb-6 border border-white/5">
+              <button
+                onClick={() => { setAuthTab('login'); setAuthError(''); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  authTab === 'login' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
               >
-                <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.39 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.09 17.62 9.5 24 9.5z"/>
-                  <path fill="#4285F4" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.65 7.03l7.19 5.6C43.98 37.13 46.1 31.34 46.1 24.55z"/>
-                  <path fill="#FBBC05" d="M10.67 28.09c-1.01-2.99-1.01-6.19 0-9.18l-7.98-6.2C.99 16.36 0 20.05 0 24c0 3.95.99 7.64 2.69 11.29l7.98-6.2z"/>
-                  <path fill="#34A853" d="M24 48c6.18 0 11.36-2.05 15.15-5.59l-7.19-5.6c-2.01 1.35-4.59 2.15-7.96 2.15-6.38 0-11.87-3.59-14.33-8.79l-7.98 6.2C6.73 42.52 14.82 48 24 48z"/>
-                </svg>
-                {loading ? 'Authenticating...' : 'Sign in with Google'}
-              </Button>
-              <p className="text-[10px] text-zinc-600 text-center font-bold uppercase tracking-widest">
-                Protected by Voicely Security Protocols
-              </p>
+                Sign In
+              </button>
+              <button
+                onClick={() => { setAuthTab('signup'); setAuthError(''); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  authTab === 'signup' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Sign Up
+              </button>
             </div>
+
+            {/* Email form */}
+            <form onSubmit={handleEmailSubmit} className="w-full space-y-3">
+              {authTab === 'signup' && (
+                <input
+                  type="text" placeholder="Full name" value={authName}
+                  onChange={e => setAuthName(e.target.value)} required disabled={authSubmitting}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+                />
+              )}
+              <input
+                type="email" placeholder="Email address" value={authEmail}
+                onChange={e => setAuthEmail(e.target.value)} required disabled={authSubmitting}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+              />
+              <div className="relative">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder={authTab === 'signup' ? 'Password (min 6 chars)' : 'Password'}
+                  value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                  required disabled={authSubmitting}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+                />
+                <button type="button" onClick={() => setShowPwd(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {authError && (
+                <p className="text-red-400 text-xs font-medium bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {authError}
+                </p>
+              )}
+              <Button type="submit" disabled={authSubmitting}
+                className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:scale-100 shadow-[0_8px_24px_-8px_rgba(99,102,241,0.5)]"
+              >
+                {authSubmitting ? 'Please wait...' : authTab === 'login' ? 'Sign In' : 'Create Account'}
+              </Button>
+            </form>
+
+            {/* Divider */}
+            <div className="w-full flex items-center gap-3 my-5">
+              <div className="flex-1 h-px bg-white/8" />
+              <span className="text-zinc-600 text-xs font-medium uppercase tracking-widest">or</span>
+              <div className="flex-1 h-px bg-white/8" />
+            </div>
+
+            {/* Google */}
+            <button onClick={handleGoogle} disabled={authSubmitting}
+              className="w-full h-11 rounded-xl bg-white text-black text-sm font-bold flex items-center justify-center gap-3 hover:bg-zinc-100 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:scale-100"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.39 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.09 17.62 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.65 7.03l7.19 5.6C43.98 37.13 46.1 31.34 46.1 24.55z"/>
+                <path fill="#FBBC05" d="M10.67 28.09c-1.01-2.99-1.01-6.19 0-9.18l-7.98-6.2C.99 16.36 0 20.05 0 24c0 3.95.99 7.64 2.69 11.29l7.98-6.2z"/>
+                <path fill="#34A853" d="M24 48c6.18 0 11.36-2.05 15.15-5.59l-7.19-5.6c-2.01 1.35-4.59 2.15-7.96 2.15-6.38 0-11.87-3.59-14.33-8.79l-7.98 6.2C6.73 42.52 14.82 48 24 48z"/>
+              </svg>
+              Continue with Google
+            </button>
+
+            <p className="text-[10px] text-zinc-700 text-center font-medium mt-5">
+              By continuing you agree to our Terms of Service and Privacy Policy
+            </p>
           </div>
         </Modal>
 
         <CreateModule open={createModuleOpen} onClose={() => setCreateModuleOpen(false)} />
+        <VoiceSandbox open={sandboxOpen} onClose={() => setSandboxOpen(false)} />
       </section>
     </>
   );

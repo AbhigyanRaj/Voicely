@@ -154,7 +154,7 @@ const startServer = async () => {
       const pathname = url.pathname;
       logger.info(`WebSocket Upgrade Request: [Path: ${pathname}] [Host: ${request.headers.host}]`);
 
-      if (pathname === '/api/streams/twilio') {
+      if (pathname === '/api/streams/twilio' || pathname === '/api/streams/browser') {
         mediaStreamWss.handleUpgrade(request, socket, head, (ws) => {
           mediaStreamWss.emit('connection', ws, request);
         });

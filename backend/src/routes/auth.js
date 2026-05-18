@@ -6,6 +6,8 @@ const router = express.Router();
 
 // Public routes
 router.post('/google', authController.googleAuth);
+router.post('/register', authController.emailRegister);
+router.post('/login', authController.emailLogin);
 
 // Protected routes
 router.use(protect);

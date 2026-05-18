@@ -8,6 +8,8 @@ interface AuthContextType {
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   setUser: (user: auth.User | null) => void;
+  emailRegister: (name: string, email: string, password: string) => Promise<void>;
+  emailLogin: (email: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,18 +30,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<auth.User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  console.log('AuthProvider rendered with user:', user, 'loading:', loading);
-
   useEffect(() => {
     const initAuth = async () => {
       const storedUser = auth.getCurrentUser();
       const token = auth.getStoredToken();
-      
       if (token && storedUser) {
-        // Optimistically set stored user
         setUser(storedUser);
-        
-        // Refresh profile from backend to get latest workspace info
         try {
           const profile = await auth.getUserProfile();
           if (profile) {
@@ -52,31 +48,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       setLoading(false);
     };
-
     initAuth();
   }, []);
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (response) => {
       try {
-        // Get user info from Google
         const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${response.access_token}` },
         }).then(res => res.json());
-
-        // Authenticate with our backend
         const authResponse = await auth.signInWithGoogle(userInfo);
-        if (authResponse.success) {
-          setUser(authResponse.user);
-        }
+        if (authResponse.success) setUser(authResponse.user);
       } catch (error) {
         console.error('Google login error:', error);
         throw error;
       }
     },
-    onError: (error) => {
-      console.error('Google login error:', error);
-    }
+    onError: (error) => console.error('Google login error:', error),
   });
 
   const signIn = async () => {
@@ -98,17 +86,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const value = {
-    user,
-    loading,
-    signIn,
-    signOut,
-    setUser,
+  const emailRegisterHandler = async (name: string, email: string, password: string) => {
+    const response = await auth.emailRegister(name, email, password);
+    if (response.success) setUser(response.user);
+  };
+
+  const emailLoginHandler = async (email: string, password: string) => {
+    const response = await auth.emailLogin(email, password);
+    if (response.success) setUser(response.user);
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{
+      user, loading, signIn, signOut, setUser,
+      emailRegister: emailRegisterHandler,
+      emailLogin: emailLoginHandler,
+    }}>
       {children}
     </AuthContext.Provider>
   );
-}; 
+};

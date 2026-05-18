@@ -141,9 +141,137 @@ const inferModuleCategory = (moduleName: string = ''): 'E-commerce' | 'Medical' 
   return 'Sales';
 };
 
+const DEMO_DATA: AnalyticsData = {
+  totalCalls: 154,
+  completedCalls: 128,
+  failedCalls: 26,
+  averageDuration: 142,
+  successRate: 83.1,
+  callsThisWeek: 42,
+  callsThisMonth: 154,
+  topModules: [
+    { name: 'Inbound Sales', calls: 68 },
+    { name: 'Lead Qualification', calls: 45 },
+    { name: 'Appointment Setting', calls: 31 },
+    { name: 'Feedback Collection', calls: 10 }
+  ],
+  recentCalls: [
+    {
+      _id: 'demo1',
+      customerName: 'Aditya Singh',
+      phoneNumber: '+91 98765 43210',
+      status: 'completed',
+      duration: 185,
+      createdAt: new Date().toISOString(),
+      moduleName: 'Inbound Sales',
+      evaluation: {
+        result: 'YES',
+        comments: ['Highly interested in premium plan'],
+        analysis: {
+          sentiment: 'Enthusiastic',
+          objections: ['Price'],
+          intentTier: 'High',
+          extractedData: { budget: '50k+', timeline: 'Immediate' },
+          competitorMentioned: false
+        }
+      }
+    },
+    {
+      _id: 'demo2',
+      customerName: 'Priya Sharma',
+      phoneNumber: '+91 88888 77777',
+      status: 'completed',
+      duration: 120,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      moduleName: 'Lead Qualification',
+      evaluation: {
+        result: 'MAYBE',
+        comments: ['Needs approval from manager'],
+        analysis: {
+          sentiment: 'Neutral',
+          objections: ['Authority'],
+          intentTier: 'Medium',
+          extractedData: { role: 'Manager' },
+          competitorMentioned: true
+        }
+      }
+    },
+    {
+      _id: 'demo3',
+      customerName: 'Rahul Verma',
+      phoneNumber: '+91 99999 11111',
+      status: 'completed',
+      duration: 45,
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      moduleName: 'Inbound Sales',
+      evaluation: {
+        result: 'NO',
+        comments: ['Already using a competitor'],
+        analysis: {
+          sentiment: 'Annoyed',
+          objections: ['Competition', 'Need'],
+          intentTier: 'Low',
+          extractedData: {},
+          competitorMentioned: true
+        }
+      }
+    }
+  ],
+  statusDistribution: [
+    { status: 'completed', count: 128, percentage: 83.1 },
+    { status: 'failed', count: 12, percentage: 7.8 },
+    { status: 'no-answer', count: 14, percentage: 9.1 }
+  ],
+  dailyCalls: [
+    { date: 'Mon', count: 12 },
+    { date: 'Tue', count: 18 },
+    { date: 'Wed', count: 15 },
+    { date: 'Thu', count: 22 },
+    { date: 'Fri', count: 19 },
+    { date: 'Sat', count: 25 },
+    { date: 'Sun', count: 43 }
+  ],
+  resultDistribution: {
+    yes: 78,
+    no: 32,
+    maybe: 18,
+    total: 128
+  },
+  intentDistribution: {
+    High: 54,
+    Medium: 48,
+    Low: 26
+  },
+  bulkCallStats: [
+    {
+      batchId: 'demo_batch',
+      moduleName: 'Marketing Blitz',
+      totalCalls: 100,
+      yesCount: 65,
+      noCount: 20,
+      maybeCount: 15,
+      conversionRate: 65,
+      date: new Date().toISOString()
+    }
+  ],
+  moduleWiseResults: {
+    'Inbound Sales': { yes: 45, no: 15, maybe: 8, total: 68 },
+    'Lead Qualification': { yes: 20, no: 15, maybe: 10, total: 45 }
+  },
+  objectionStats: [
+    { subject: 'Price', count: 45 },
+    { subject: 'Timing', count: 32 },
+    { subject: 'Trust', count: 18 },
+    { subject: 'Need', count: 12 },
+    { subject: 'Authority', count: 8 },
+    { subject: 'Competition', count: 5 }
+  ]
+};
+
 const AnalyticsPage: React.FC = () => {
   const { user } = useAuth();
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [error, setError] = useState("");
@@ -374,9 +502,21 @@ const AnalyticsPage: React.FC = () => {
     }
   };
 
+  const toggleDemoMode = () => {
+    if (!isDemoMode) {
+      setAnalyticsData(DEMO_DATA);
+      setIsDemoMode(true);
+    } else {
+      setIsDemoMode(false);
+      fetchAnalyticsData();
+    }
+  };
+
   useEffect(() => {
-    fetchAnalyticsData();
-  }, [user, timeRange]);
+    if (!isDemoMode) {
+      fetchAnalyticsData();
+    }
+  }, [user, timeRange, isDemoMode]);
 
 
 
@@ -467,9 +607,21 @@ const AnalyticsPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 mt-4 sm:mt-0">
               <Button 
+                variant={isDemoMode ? "default" : "outline"}
+                size="sm"
+                onClick={toggleDemoMode}
+                className={`text-xs sm:text-sm px-3 py-2 ${isDemoMode ? "bg-amber-500 hover:bg-amber-600 text-black border-none" : ""}`}
+              >
+                <Target className="w-4 h-4 mr-2" />
+                {isDemoMode ? "Exit Demo" : "Demo Data"}
+              </Button>
+              <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={fetchAnalyticsData}
+                onClick={() => {
+                  setIsDemoMode(false);
+                  fetchAnalyticsData();
+                }}
                 className="text-xs sm:text-sm px-3 py-2"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />

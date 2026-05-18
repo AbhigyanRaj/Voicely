@@ -2,39 +2,103 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Note: We use the default configuration which usually targets v1 or v1beta.
-// If v1beta is failing with 404, we can try to force v1 in the model options.
+
+/**
+ * Universal fallback handler for Gemini generative API requests.
+ * Automatically rotates between next-gen, standard, and legacy models on both v1beta and v1 endpoints
+ * to safeguard against 404 Model Not Found and 429 Quota Exceeded exceptions.
+ */
+const callGenerativeMethodWithFallback = async (methodType, options, ...args) => {
+  // Ordered sequence of fallback models - gemini-flash-latest has the highest active working quota on this key
+  const models = ["gemini-flash-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
+  let lastError = null;
+
+  // Try v1beta endpoints first (usually best for experimental real-time/TTS/lite models)
+  for (const modelName of models) {
+    try {
+      logger.debug(`Attempting Gemini call with model: ${modelName} using apiVersion: v1beta...`);
+      const modelInstance = genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1beta' });
+      
+      if (methodType === 'generateContentStream') {
+        const result = await modelInstance.generateContentStream(...args);
+        return { result, modelUsed: modelName };
+      } else {
+        const result = await modelInstance.generateContent(...args);
+        return { result, modelUsed: modelName };
+      }
+    } catch (err) {
+      logger.warn(`Gemini call failed for model ${modelName} on v1beta: ${err.message}`);
+      if (err.message?.includes('429') || err.message?.toLowerCase()?.includes('quota')) {
+        logger.error(`[CRITICAL] Gemini API Key Quota Exceeded (429) for model ${modelName}. Failing fast.`);
+        throw err;
+      }
+      lastError = err;
+      continue;
+    }
+  }
+
+  // Fallback to standard v1 endpoints if all v1beta queries fail or hit quota limitations
+  for (const modelName of ["gemini-flash-latest", "gemini-2.0-flash-lite"]) {
+    try {
+      logger.debug(`Fallback: Attempting Gemini call with model: ${modelName} on apiVersion: v1...`);
+      const modelInstance = genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+      if (methodType === 'generateContentStream') {
+        const result = await modelInstance.generateContentStream(...args);
+        return { result, modelUsed: modelName };
+      } else {
+        const result = await modelInstance.generateContent(...args);
+        return { result, modelUsed: modelName };
+      }
+    } catch (err) {
+      logger.warn(`Gemini call failed for model ${modelName} on v1: ${err.message}`);
+      if (err.message?.includes('429') || err.message?.toLowerCase()?.includes('quota')) {
+        logger.error(`[CRITICAL] Gemini API Key Quota Exceeded (429) for model ${modelName} on v1. Failing fast.`);
+        throw err;
+      }
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+};
 
 export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk) => {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const prompt = `${systemPrompt}\n\n--- Conversation History ---\n${chatHistory}\nAI:`;
+  const startGemini = performance.now();
+  logger.info(`[LATENCY TIMER] Gemini Stream Query started`);
 
-    const result = await model.generateContentStream(prompt);
+  try {
+    const prompt = `${systemPrompt}\n\n--- Conversation History ---\n${chatHistory}\nAI:`;
+    
+    const startFallback = performance.now();
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContentStream', {}, prompt);
+    const fallbackDuration = performance.now() - startFallback;
+    logger.info(`[LATENCY TIMER] callGenerativeMethodWithFallback resolved in ${fallbackDuration.toFixed(1)}ms [Model: ${modelUsed}]`);
+
     let fullText = '';
+    let isFirstChunk = true;
 
     for await (const chunk of result.stream) {
+      if (isFirstChunk) {
+        isFirstChunk = false;
+        const firstChunkDuration = performance.now() - startGemini;
+        logger.info(`[LATENCY TIMER] Gemini First Chunk received in ${firstChunkDuration.toFixed(1)}ms`);
+      }
       const chunkText = chunk.text();
       fullText += chunkText;
       if (onChunk) onChunk(chunkText);
     }
 
-    logger.debug(`Gemini Response Complete: [Length: ${fullText.length}]`);
+    const totalDuration = performance.now() - startGemini;
+    logger.info(`[LATENCY TIMER] Gemini full stream complete in ${totalDuration.toFixed(1)}ms [Length: ${fullText.length}]`);
     return fullText.trim();
   } catch (error) {
     logger.error('Gemini conversational stream error', error);
-    if (error.response) {
-        logger.error('Gemini error response data', error.response);
-    }
     throw error;
   }
 };
 
 export const transcribeAudio = async (audioBuffer) => {
   try {
-    // Note: Actual transcription happens during the call via Twilio's speech recognition
-    // The transcription is built from the SpeechResult responses collected during the call
-    // This function is kept for compatibility but transcription is handled in real-time
     logger.debug('Gemini configuration: Transcription mode active');
     return "Transcription is captured in real-time during the call via Twilio speech recognition";
   } catch (error) {
@@ -45,12 +109,10 @@ export const transcribeAudio = async (audioBuffer) => {
 
 export const generateSummary = async (text) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
     const prompt = `You are a helpful assistant that summarizes call transcripts and extracts key insights. Please summarize this call transcript and extract key insights: ${text}`;
-
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     const response = await result.response;
-    return response.text();
+    return response.text().trim();
   } catch (error) {
     logger.error('Summary generation error', error);
     throw error;
@@ -62,8 +124,6 @@ export const generateSummary = async (text) => {
  */
 export const extractAnswersJSON = async (chatHistory, questions) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-
     const prompt = `You are a data extraction assistant. Based on this phone call transcript, extract the user's answers to the following questions.
     
     --- TRANSCRIPT ---
@@ -74,7 +134,7 @@ export const extractAnswersJSON = async (chatHistory, questions) => {
     
     Return a strictly valid JSON object where the keys are the exact questions as strings, and the values are the user's extracted answers. If a question was not answered or wasn't reached, set the value to "Not answered". Do NOT include Markdown blocks like \`\`\`json. Return only the raw JSON string.`;
 
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     let responseText = result.response.text().trim();
 
     // Strip markdown formatting if Gemini included it despite instructions
@@ -89,7 +149,6 @@ export const extractAnswersJSON = async (chatHistory, questions) => {
 
 /**
  * Evaluate loan application based on responses
- * Based on the reference Python implementation
  */
 export const evaluateLoanApplication = async (applicationData) => {
   const prompt = `
@@ -111,8 +170,7 @@ You are a loan decisioning expert. Respond only with YES, NO, or INVESTIGATION_R
 `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     const response = await result.response;
     return response.text().trim();
   } catch (error) {
@@ -145,8 +203,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     const response = await result.response;
     return response.text().trim();
   } catch (error) {
@@ -160,8 +217,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
  */
 export const analyzeResponseWithGemini = async (prompt) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     const response = await result.response;
     return response.text().trim();
   } catch (error) {
@@ -251,8 +307,7 @@ Rules:
 `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const result = await model.generateContent(prompt);
+    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
     let responseText = result.response.text().trim();
     
     // Safety: Strip markdown
@@ -331,19 +386,13 @@ const evaluateSalesCall = async (data) => {
  * Evaluate application based on type and category
  */
 export const evaluateApplication = async (applicationType, applicationData, category = 'startup', transcript = "") => {
-  // Handle Custom or Industry-specific modules
   if (!applicationType || applicationType === 'custom') {
-    // Legacy: We used to check for numeric question indices. 
-    // Now we use semantic keys from extractedData, so we can proceed directly to evaluation.
-
-    // Route based on Workspace Category
     switch (category) {
       case 'real_estate': return await evaluateRealEstateCall(applicationData, transcript);
       case 'medical': return await evaluateMedicalCall(applicationData);
       case 'ecommerce': return await evaluateEcomCall(applicationData);
       case 'startup': return await evaluateSalesCall(applicationData);
       default:
-        // Fallback to legacy sentiment-based logic if no category match
         const responses = Object.values(applicationData);
         const positiveKeywords = ['yes', 'yeah', 'sure', 'definitely', 'absolutely', 'interested', 'need', 'want', 'helpful', 'great', 'good'];
         const negativeKeywords = ['no', 'not', 'never', 'don\'t', 'won\'t', 'can\'t'];

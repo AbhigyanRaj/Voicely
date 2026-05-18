@@ -17,6 +17,36 @@ const router = express.Router();
 const activeSessions = new Map();
 
 /**
+ * Generates an outbound greeting that introduces the agent and establishes the call context naturally.
+ */
+const generateOutboundGreeting = (customerName, moduleName, moduleType, languageCode) => {
+  const isHindi = languageCode?.toLowerCase()?.includes('hi') || languageCode === 'hindi';
+  const name = customerName && customerName.trim() !== '' ? customerName : '';
+  
+  if (isHindi) {
+    const greetingStart = name ? `नमस्ते ${name} जी! ` : `नमस्ते! `;
+    switch (moduleType) {
+      case 'loan':
+        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारी लोन सर्विसेज़ के लिए ऑनलाइन इन्क्वायरी की थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और कुछ बेसिक डिटेल्स ले लूँ। क्या आपके पास एक मिनट बात करने का समय है?`;
+      case 'credit_card':
+        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारे प्रीमियम क्रेडिट कार्ड ऑफर्स के लिए अप्लाई करने में दिलचस्पी दिखाई थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और आपकी प्री-अप्रूवल चेक कर लूं। क्या आपके पास एक मिनट बात करने का समय है?`;
+      default:
+        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारे प्रीमियम ऑप्शन्स और लिस्टिंग्स में दिलचस्पी दिखाई थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और कुछ बेसिक इन्फॉर्मेशन ले लूँ। क्या आपके पास एक मिनट बात करने का समय है?`;
+    }
+  } else {
+    const greetingStart = name ? `Hello ${name}! ` : `Hello there! `;
+    switch (moduleType) {
+      case 'loan':
+        return `${greetingStart}This is Sara calling from ${moduleName}. I noticed you were looking for premium loan solutions, and I wanted to quickly touch base to share our customized interest rates and help with your application. Do you have a brief moment?`;
+      case 'credit_card':
+        return `${greetingStart}This is Sara calling from ${moduleName}. I wanted to quickly follow up on your interest in our premium credit card offers with exclusive benefits and high limits. Do you have a brief moment to see if we can get you pre-approved?`;
+      default:
+        return `${greetingStart}This is Sara calling from ${moduleName}. I'm following up on your interest in our premium listings and wanted to quickly share the details with you. Do you have a quick minute?`;
+    }
+  }
+};
+
+/**
  * Handle call completion data extraction
  */
 const handleCallCompletion = async (callSid, sessionData) => {
@@ -265,6 +295,9 @@ export function setupMediaStreamWebSocket(server = null) {
                   keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2']
                 });
 
+                // Initialize buffered transcript array
+                sessionData.bufferedTranscript = [];
+
                 // Handle Deepgram transcripts
                 deepgramService.on('partialTranscript', async (data) => {
                   sessionData.partialTranscripts.push(data);
@@ -284,6 +317,13 @@ export function setupMediaStreamWebSocket(server = null) {
                     if (sessionData.callHandler) {
                       sessionData.callHandler.state = 'IDLE';
                     }
+                    
+                    // Clear debouncer state to avoid cross-talk processing
+                    sessionData.bufferedTranscript = [];
+                    if (sessionData.silenceTimeout) {
+                      clearTimeout(sessionData.silenceTimeout);
+                      sessionData.silenceTimeout = null;
+                    }
                   }
 
                   if (sessionData.callHandler) {
@@ -293,24 +333,44 @@ export function setupMediaStreamWebSocket(server = null) {
                 });
 
                 deepgramService.on('finalTranscript', async (data) => {
-                  sessionData.finalTranscripts.push(data);
-                  sessionData.currentUtterance = '';
-                  logger.debug(`Stream Final Transcript: "${data.text}" (${(data.confidence * 100).toFixed(0)}%)`);
+                  const cleanedText = data.text?.trim();
+                  if (!cleanedText) return;
 
-                  if (sessionData.callHandler) {
-                    try {
-                      await sessionData.callHandler.processFinalTranscript(data.text, data.confidence);
-                      broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: data.text, isFinal: true });
-                    } catch (aiError) {
-                      logger.error('Error processing AI response in media stream:', aiError);
-                      // Fallback response to the user so they aren't left in silence
-                      if (sessionData.tts) {
-                        const errorFallback = "I'm sorry, I'm having trouble processing that. Could you please repeat it?";
-                        sessionData.tts.processTextChunk(errorFallback);
-                        sessionData.tts.flush();
+                  logger.debug(`Stream Segment Received: "${cleanedText}" (${(data.confidence * 100).toFixed(0)}%)`);
+                  sessionData.bufferedTranscript.push(data);
+
+                  // Reset turns with a 650ms debouncer to let the user complete their thoughts naturally
+                  if (sessionData.silenceTimeout) {
+                    clearTimeout(sessionData.silenceTimeout);
+                    sessionData.silenceTimeout = null;
+                  }
+
+                  sessionData.silenceTimeout = setTimeout(async () => {
+                    if (sessionData.bufferedTranscript.length === 0) return;
+
+                    const fullUtterance = sessionData.bufferedTranscript.map(t => t.text).join(' ').trim();
+                    const averageConfidence = sessionData.bufferedTranscript.reduce((acc, t) => acc + t.confidence, 0) / sessionData.bufferedTranscript.length;
+
+                    // Clear the buffer for the next turn
+                    sessionData.bufferedTranscript = [];
+
+                    logger.info(`[DEBOUNCER] Turn completed. Processing user utterance: "${fullUtterance}"`);
+
+                    if (sessionData.callHandler) {
+                      try {
+                        broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: fullUtterance, isFinal: true });
+                        await sessionData.callHandler.processFinalTranscript(fullUtterance, averageConfidence);
+                      } catch (aiError) {
+                        logger.error('Error processing AI response in media stream:', aiError);
+                        // Fallback response to the user so they aren't left in silence
+                        if (sessionData.tts) {
+                          const errorFallback = "I'm sorry, I'm having trouble processing that. Could you please repeat it?";
+                          sessionData.tts.processTextChunk(errorFallback);
+                          sessionData.tts.flush();
+                        }
                       }
                     }
-                  }
+                  }, 650);
                 });
 
                 deepgramService.on('error', (error) => {
@@ -328,13 +388,16 @@ export function setupMediaStreamWebSocket(server = null) {
                 // Trigger initial AI greeting
                 try {
                   const moduleName = callHandler.module?.name || 'Voicely';
-                  const isHindi = call.selectedLanguage?.toLowerCase() === 'hindi' || call.selectedLanguage === 'hi';
+                  const moduleType = callHandler.module?.type || 'custom';
                   
-                  const welcomeMessage = isHindi
-                    ? `नमस्ते ${call.customerName || ''}! मैं ${moduleName} से बात कर रही हूँ। मैं आपकी किस प्रकार सहायता कर सकती हूँ?`
-                    : `Hello ${call.customerName || 'there'}! I am representing ${moduleName}. How can I assist you today?`;
+                  const welcomeMessage = generateOutboundGreeting(
+                    call.customerName,
+                    moduleName,
+                    moduleType,
+                    call.selectedLanguage
+                  );
                   
-                  logger.info(`Sending initial greeting: "${welcomeMessage}"`);
+                  logger.info(`Sending intelligent outbound greeting: "${welcomeMessage}"`);
                   callHandler.chatHistory += `AI: ${welcomeMessage}\n`;
                   tts.processTextChunk(welcomeMessage);
                   tts.flush();

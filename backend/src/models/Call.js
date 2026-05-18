@@ -52,7 +52,7 @@ const callSchema = new mongoose.Schema({
   evaluation: {
     result: {
       type: String,
-      enum: ['YES', 'NO', 'MAYBE', 'INVESTIGATION_REQUIRED', 'DECLINED', 'INTERESTED', 'QUALIFIED', 'URGENT', 'BOOKED'],
+      enum: ['YES', 'NO', 'MAYBE', 'INVESTIGATION_REQUIRED', 'DECLINED', 'INTERESTED', 'QUALIFIED', 'UNQUALIFIED', 'NURTURE', 'URGENT', 'BOOKED'],
       default: null,
     },
     comments: [{

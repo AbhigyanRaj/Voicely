@@ -83,6 +83,66 @@ export const initiateCall = async (req, res) => {
 };
 
 /**
+ * Initiate a browser sandbox call
+ */
+export const initiateBrowserSandboxCall = async (req, res) => {
+    try {
+        const { moduleId, customerName, selectedVoice, selectedLanguage, ttsProvider } = req.body;
+        const userId = req.user._id;
+
+        logger.info(`Browser Sandbox Call Request: [Customer: ${customerName}] [Module: ${moduleId}]`);
+
+        if (!customerName || !moduleId) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const module = await Module.findById(moduleId);
+        if (!module) return res.status(404).json({ error: 'Module not found' });
+
+        const finalVoice = selectedVoice || module.selectedVoice || 'NEERJA';
+        const finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
+        const finalProvider = ttsProvider || module.ttsProvider || 'google';
+
+        // Generate a unique browser sandbox Call SID
+        const sandboxCallSid = 'browser_sandbox_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+
+        const callRecord = await Call.create({
+            userId,
+            workspaceId: req.user.currentWorkspace?._id,
+            moduleId,
+            customerName: customerName.trim(),
+            phoneNumber: '+1000000000', // Mock Sandbox phone number
+            twilioCallSid: sandboxCallSid,
+            selectedVoice: finalVoice,
+            selectedLanguage: finalLanguage,
+            ttsProvider: finalProvider,
+            status: 'ringing', // Start as ringing to simulate standard flow
+            currentStep: 0,
+            source: 'web'
+        });
+
+        // Trigger early lead timeline sync
+        try {
+            await leadService.syncCallToLead(callRecord);
+            logger.info(`Early lead sync successful for Browser Sandbox Call ${callRecord.twilioCallSid}`);
+        } catch (leadErr) {
+            logger.error(`Early lead sync failed:`, leadErr);
+        }
+
+        broadcastCallStatus(callRecord._id.toString(), 'started', {
+            customerName: callRecord.customerName,
+            phoneNumber: callRecord.phoneNumber,
+            moduleName: module.name
+        });
+
+        res.json({ success: true, call: callRecord });
+    } catch (error) {
+        logger.error('Failed to initiate browser sandbox call', error);
+        res.status(500).json({ error: 'Failed to initiate browser sandbox call', message: error.message });
+    }
+};
+
+/**
  * Handle Twilio voice webhook
  */
 export const handleCallWebhook = async (req, res) => {
@@ -91,24 +151,18 @@ export const handleCallWebhook = async (req, res) => {
 
         logger.info(`Twilio Webhook Received: [CallSid: ${CallSid}] [From: ${From}] [To: ${To}] [ModuleId: ${moduleId}]`);
 
-        const module = await Module.findById(moduleId);
-        if (!module) {
-            logger.warn(`Module lookup failed for ID: ${moduleId}. Sending error TwiML to Twilio.`);
-            const errorTwiml = createTwiMLResponse();
-            errorTwiml.say('Sorry, an error occurred.');
-            return res.type('text/xml').send(errorTwiml.toString());
-        }
-
+        // We respond immediately with the Media Stream TwiML to beat Twilio's 5s timeout.
+        // The WebSocket connection will handle the actual logic and module lookup.
         const twiml = createTwiMLResponse();
 
         // 1. Initiate full bidirectional audio stream to our WebSocket
-        addMediaStream(twiml, req.body.CallSid);
+        addMediaStream(twiml, CallSid);
 
         // 2. Keep the Twilio call open for up to an hour while WebSocket handles audio
         twiml.pause({ length: 3600 });
 
         const twimlString = twiml.toString();
-        logger.debug(`Generated TwiML for Call ${req.body.CallSid}:`, twimlString);
+        logger.debug(`Generated TwiML for Call ${CallSid}:`, twimlString);
         res.type('text/xml').send(twimlString);
     } catch (error) {
         logger.error('Call webhook processing error', error);

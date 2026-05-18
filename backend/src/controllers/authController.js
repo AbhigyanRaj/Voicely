@@ -4,6 +4,110 @@ import { generateToken } from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 
 /**
+ * Helper: build the safe user response object
+ */
+const buildUserResponse = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  tokens: user.tokens,
+  subscription: user.subscription || { tier: 'free', status: 'active' },
+  totalCallsMade: user.totalCallsMade,
+  currentWorkspace: user.currentWorkspace,
+});
+
+/**
+ * Create a default workspace for a brand-new user
+ */
+const ensureDefaultWorkspace = async (user) => {
+  const workspace = await Workspace.create({
+    userId: user._id,
+    name: 'Main Workspace',
+    category: 'startup',
+  });
+  user.currentWorkspace = workspace._id;
+  await user.save();
+  return workspace;
+};
+
+/**
+ * POST /api/auth/register  —  Email + password signup
+ */
+export const emailRegister = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase(),
+      password,
+    });
+
+    await ensureDefaultWorkspace(user);
+    await user.populate('currentWorkspace');
+
+    const token = generateToken(user._id);
+    logger.success(`New user registered: ${user.email}`);
+
+    return res.status(201).json({ success: true, user: buildUserResponse(user), token });
+  } catch (error) {
+    logger.error('Email registration failed', error);
+    return res.status(500).json({ error: 'Registration failed', message: error.message });
+  }
+};
+
+/**
+ * POST /api/auth/login  —  Email + password login
+ */
+export const emailLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    // Must explicitly select password since it's hidden by default
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password').populate('currentWorkspace');
+
+    if (!user || !user.password) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Ensure workspace exists (legacy safety)
+    if (!user.currentWorkspace) {
+      await ensureDefaultWorkspace(user);
+      await user.populate('currentWorkspace');
+    }
+
+    const token = generateToken(user._id);
+    logger.success(`User logged in: ${user.email}`);
+
+    return res.json({ success: true, user: buildUserResponse(user), token });
+  } catch (error) {
+    logger.error('Email login failed', error);
+    return res.status(500).json({ error: 'Login failed', message: error.message });
+  }
+};
+
+/**
  * Handles Google OAuth login/signup
  */
 export const googleAuth = async (req, res) => {

@@ -391,9 +391,9 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
     : contacts;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:gap-5 w-full max-w-md mx-auto p-2 sm:p-0">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:gap-5 w-full max-w-md mx-auto sm:p-0">
       {/* Module Selection Dropdown */}
-      <div className="flex flex-col gap-1 relative z-20" ref={moduleDropdownRef}>
+      <div className="flex flex-col gap-1 relative z-20" ref={moduleDropdownRef}> 
         <label className="text-sm text-white/80 font-medium mb-1">Choose Voice Agent:</label>
         <button
           type="button"
@@ -491,12 +491,12 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
       )}
 
       {/* Settings Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-10 w-full mb-2">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 relative z-10 w-full mb-3">
         
         {/* TTS Engine */}
-        <div className="flex flex-col gap-1.5 w-full">
-          <label className="text-xs text-zinc-400 font-medium">TTS Engine</label>
-          <div className="grid grid-cols-2 gap-2 bg-zinc-900 border border-zinc-700 p-1 rounded-lg">
+        <div className="flex flex-col gap-1 w-full">
+          <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">TTS Engine</label>
+          <div className="grid grid-cols-2 h-10 items-stretch gap-1 bg-zinc-900 border border-zinc-700/80 p-1 rounded-lg">
             <button
               type="button"
               onClick={() => {
@@ -504,7 +504,7 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
                 setSelectedLanguage('en-IN');
                 setSelectedVoice('NEERJA');
               }}
-              className={`text-xs py-1.5 px-2 rounded-md transition-all ${ttsProvider === 'google' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+              className={`h-full flex items-center justify-center text-[11px] font-bold px-2 rounded-md transition-all ${ttsProvider === 'google' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
             >
               Google
             </button>
@@ -515,31 +515,31 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
                 setSelectedLanguage('hi-IN');
                 setSelectedVoice('anushka');
               }}
-              className={`text-xs py-1.5 px-2 rounded-md transition-all ${ttsProvider === 'sarvam' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+              className={`h-full flex items-center justify-center text-[11px] font-bold px-2 rounded-md transition-all ${ttsProvider === 'sarvam' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
             >
-              Sarvam AI
+              Sarvam
             </button>
           </div>
         </div>
 
         {/* AI Model */}
-        <div className="flex flex-col gap-1.5 relative" ref={modelDropdownRef} style={{ zIndex: modelDropdownOpen ? 40 : 10 }}>
-          <label className="text-xs text-zinc-400 font-medium">AI Model</label>
+        <div className="flex flex-col gap-1 relative" ref={modelDropdownRef} style={{ zIndex: modelDropdownOpen ? 40 : 10 }}>
+          <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">AI Model</label>
           <button
             type="button"
-            className="flex items-center justify-between w-full h-full min-h-[36px] rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-xs text-white hover:bg-zinc-800 hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all"
+            className="flex items-center justify-between w-full h-10 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-3 text-xs text-white hover:bg-zinc-800 hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all font-semibold"
             onClick={() => setModelDropdownOpen((open) => !open)}
           >
-            <span className="font-medium truncate">{AI_MODELS.find(m => m.id === selectedModel)?.name}</span>
-            <svg className={`w-3 h-3 ml-2 transition-transform text-zinc-400 flex-shrink-0 ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            <span className="truncate">{AI_MODELS.find(m => m.id === selectedModel)?.name}</span>
+            <svg className={`w-3.5 h-3.5 ml-2 transition-transform text-zinc-400 shrink-0 ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
           </button>
           {modelDropdownOpen && (
-            <ul className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto py-1">
+            <ul className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto py-1 z-50">
               {AI_MODELS.map(model => (
                 <li
                   key={model.id}
                   className={`flex items-center justify-between px-3 py-2 cursor-pointer text-xs transition-colors ${
-                    selectedModel === model.id ? 'bg-blue-600 text-white' : 'hover:bg-zinc-700 text-zinc-200'
+                    selectedModel === model.id ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-zinc-700 text-zinc-200 font-medium'
                   } ${!model.available ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={() => {
                     if (model.available) {
@@ -550,7 +550,7 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
                 >
                   <span className="truncate">{model.name}</span>
                   {!model.available && (
-                    <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1 py-0.5 rounded flex-shrink-0 ml-2">Soon</span>
+                    <span className="text-[9px] bg-yellow-500/20 text-yellow-300 px-1 py-0.5 rounded flex-shrink-0 ml-2">Soon</span>
                   )}
                 </li>
               ))}
@@ -559,55 +559,60 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
         </div>
 
         {/* Language */}
-        <div className="flex flex-col gap-1.5 position-relative w-full">
-          <label className="text-xs text-zinc-400 font-medium">Language</label>
-          <select
-            value={selectedLanguage}
-            onChange={(e) => {
-              const lang = e.target.value;
-              setSelectedLanguage(lang);
-              const voices = ttsProvider === "google" ? GOOGLE_VOICES[lang] : SARVAM_VOICES[lang];
-              if (voices && voices.length > 0) {
-                setSelectedVoice(voices[0].id);
-              }
-            }}
-            className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 text-xs appearance-none cursor-pointer"
-          >
-            {currentLanguages.map(l => (
-              <option key={l.code} value={l.code} className="bg-zinc-800">{l.label}</option>
-            ))}
-          </select>
+        <div className="flex flex-col gap-1 w-full relative">
+          <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Language</label>
+          <div className="relative w-full">
+            <select
+              value={selectedLanguage}
+              onChange={(e) => {
+                const lang = e.target.value;
+                setSelectedLanguage(lang);
+                const voices = ttsProvider === "google" ? GOOGLE_VOICES[lang] : SARVAM_VOICES[lang];
+                if (voices && voices.length > 0) {
+                  setSelectedVoice(voices[0].id);
+                }
+              }}
+              className="w-full h-10 pl-3 pr-8 bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 text-xs font-semibold cursor-pointer appearance-none"
+            >
+              {currentLanguages.map(l => (
+                <option key={l.code} value={l.code} className="bg-zinc-800 font-semibold">{l.label}</option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-zinc-400">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </div>
         </div>
 
         {/* Voice Persona */}
-        <div className="flex flex-col gap-1.5 relative z-10 w-full" ref={dropdownRef}>
-          <label className="text-xs text-zinc-400 font-medium flex items-center justify-between">
+        <div className="flex flex-col gap-1 relative z-10 w-full" ref={dropdownRef}>
+          <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider flex items-center justify-between">
             Voice Model
           </label>
           <button
             type="button"
-            className="flex items-center justify-between w-full h-[36px] min-h-[36px] rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-xs text-white hover:bg-zinc-800 hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all"
+            className="flex items-center justify-between w-full h-10 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-3 text-xs text-white hover:bg-zinc-800 hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all font-semibold"
             onClick={() => setDropdownOpen((open) => !open)}
             aria-haspopup="listbox"
             aria-expanded={dropdownOpen}
           >
             <span className="flex items-center gap-1.5 min-w-0 pr-1 truncate">
-              <span className="font-medium truncate">{currentVoices.find(v => v.id === selectedVoice)?.label || selectedVoice}</span>
-              <span className="text-[10px] text-zinc-500 shrink-0">({currentVoices.find(v => v.id === selectedVoice)?.gender})</span>
+              <span className="truncate">{currentVoices.find(v => v.id === selectedVoice)?.label || selectedVoice}</span>
+              <span className="text-[10px] text-zinc-500 shrink-0 font-normal">({currentVoices.find(v => v.id === selectedVoice)?.gender})</span>
             </span>
-            <svg className={`w-3 h-3 ml-1 transition-transform text-zinc-400 shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            <svg className={`w-3.5 h-3.5 ml-1 transition-transform text-zinc-400 shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
           </button>
           
           {dropdownOpen && (
             <ul
-              className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-40 py-1 origin-top"
+              className="absolute left-0 right-0 top-full mt-1 bg-zinc-855 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-40 py-1 origin-top"
               tabIndex={-1}
               role="listbox"
             >
               {currentVoices.map(v => (
                 <li
                   key={v.id}
-                  className={`flex items-center justify-between px-3 py-2 cursor-pointer text-xs transition-colors ${selectedVoice === v.id ? 'bg-blue-600 text-white' : 'hover:bg-zinc-700 text-zinc-200'}`}
+                  className={`flex items-center justify-between px-3 py-2 cursor-pointer text-xs transition-colors ${selectedVoice === v.id ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-zinc-700 text-zinc-200 font-medium'}`}
                   onClick={() => { setSelectedVoice(v.id); setDropdownOpen(false); }}
                   role="option"
                   aria-selected={selectedVoice === v.id}
@@ -615,10 +620,10 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
                 >
                   <div className="flex flex-col gap-0.5 min-w-0 mr-2">
                     <span className="flex items-center gap-1.5">
-                      <span className="font-medium truncate">{v.label}</span>
-                      <span className="text-[10px] text-zinc-400 shrink-0">({v.gender})</span>
+                      <span className="font-semibold truncate">{v.label}</span>
+                      <span className="text-[9px] text-zinc-400 shrink-0">({v.gender})</span>
                     </span>
-                    <span className="text-[10px] text-zinc-500 truncate">{v.desc}</span>
+                    <span className="text-[9px] text-zinc-500 truncate">{v.desc}</span>
                   </div>
                   {v.demo && (
                     <button
@@ -646,18 +651,19 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-        <label className="text-sm text-white/80 font-medium">Upload CSV (name, phone):</label>
+      <div className="flex items-center justify-between mt-1 mb-1 gap-2 flex-wrap">
+        <label className="text-xs text-white/80 font-semibold uppercase tracking-wider">Upload CSV (name, phone):</label>
         <a
           href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}
           download="contacts_template.csv"
-          className="text-xs text-blue-400 hover:underline"
+          className="text-xs text-blue-400 hover:underline font-semibold"
         >
           Download template
         </a>
       </div>
+      
       <div
-        className={`rounded-lg border-2 border-dashed ${dragActive ? "border-blue-400 bg-blue-950/30" : "border-zinc-700 bg-zinc-900"} px-2 sm:px-4 py-4 sm:py-6 text-center cursor-pointer transition-colors w-full`}
+        className={`group rounded-xl border-2 border-dashed ${dragActive ? "border-blue-400 bg-blue-950/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]" : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900/60"} px-4 py-5 text-center cursor-pointer transition-all w-full flex flex-col items-center justify-center gap-2`}
         onClick={() => fileInputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -670,8 +676,12 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
           onChange={handleFileChange}
           className="hidden"
         />
-        <span className="text-xs text-white/60">Drag & drop or click to upload CSV</span>
+        <svg className="w-6 h-6 text-zinc-500 group-hover:text-zinc-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <span className="text-xs text-zinc-400 font-semibold transition-colors group-hover:text-zinc-300">Drag & drop or click to upload CSV</span>
       </div>
+
       {contacts.length > 0 && (
         <div className="bg-zinc-900 rounded-lg p-3 border border-zinc-700">
           <input
@@ -679,7 +689,7 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
             placeholder="Search contacts..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="mb-2 w-full rounded border border-zinc-700 px-3 py-1 text-xs sm:text-sm bg-zinc-800 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+            className="mb-2 w-full rounded border border-zinc-700 px-3 py-1.5 text-xs bg-zinc-800 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 font-medium"
           />
           <div className="flex items-center mb-2">
             <input
@@ -688,13 +698,13 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
               onChange={e => handleSelectAll(e.target.checked)}
               className="mr-2 accent-blue-500"
             />
-            <span className="text-xs text-white/70">Select All</span>
+            <span className="text-xs text-white/70 font-semibold">Select All</span>
           </div>
           <div className="max-h-40 overflow-y-auto flex flex-col gap-1 w-full">
             {filteredContacts.map((c, idx) => (
               <label
                 key={idx}
-                className={`flex items-center gap-2 text-xs sm:text-sm px-2 py-1 rounded transition-colors w-full ${c.selected ? "bg-blue-900/30 text-blue-200" : "text-white/80 hover:bg-zinc-800"}`}
+                className={`flex items-center gap-2 text-xs px-2 py-1 rounded transition-colors w-full ${c.selected ? "bg-blue-900/30 text-blue-200" : "text-white/80 hover:bg-zinc-800"}`}
                 style={{ cursor: "pointer" }}
               >
                 <input
@@ -703,7 +713,7 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
                   onChange={e => handleContactSelect(contacts.indexOf(c), e.target.checked)}
                   className="accent-blue-500"
                 />
-                <span>{c.name} ({c.phone})</span>
+                <span className="font-medium">{c.name} ({c.phone})</span>
               </label>
             ))}
             {filteredContacts.length === 0 && (
@@ -712,32 +722,38 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
           </div>
         </div>
       )}
+
       {contacts.length === 0 && (
         <>
-          <div className="border-t border-zinc-800 my-2" />
-          <label className="text-sm text-white/80 font-medium">Or enter manually:</label>
-          <input
-            type="text"
-            placeholder="Name"
-            value={manualName}
-            onChange={e => setManualName(e.target.value)}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 bg-zinc-800 text-white placeholder-zinc-400 w-full"
-          />
-          <input
-            type="tel"
-            placeholder="Phone Number"
-            value={manualPhone}
-            onChange={e => setManualPhone(e.target.value)}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 bg-zinc-800 text-white placeholder-zinc-400 w-full"
-          />
+          <div className="border-t border-zinc-800/80 my-3" />
+          <div className="text-center mb-1">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Or enter manually</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            <input
+              type="text"
+              placeholder="Name"
+              value={manualName}
+              onChange={e => setManualName(e.target.value)}
+              className="rounded-lg border border-zinc-700/80 px-4 h-10 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 bg-zinc-800 text-white placeholder-zinc-500 font-semibold w-full"
+            />
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              value={manualPhone}
+              onChange={e => setManualPhone(e.target.value)}
+              className="rounded-lg border border-zinc-700/80 px-4 h-10 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 bg-zinc-800 text-white placeholder-zinc-500 font-semibold w-full"
+            />
+          </div>
         </>
       )}
-      {error && <div className="text-red-400 text-xs text-center font-medium">{error}</div>}
-      {success && <div className="text-green-400 text-xs text-center font-medium">{success}</div>}
+
+      {error && <div className="text-red-400 text-xs text-center font-bold">{error}</div>}
+      {success && <div className="text-green-400 text-xs text-center font-bold">{success}</div>}
       
       <Button 
         type="submit" 
-        className="mt-2 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 transition-colors w-full sm:w-auto text-xs sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mt-3 h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider text-xs"
         disabled={calling || !selectedModule}
       >
         {calling ? "Making Calls..." : "Submit"}

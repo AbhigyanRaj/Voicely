@@ -62,39 +62,60 @@ export const removeStoredUser = () => {
 // Google OAuth authentication
 export const signInWithGoogle = async (googleUser: any): Promise<AuthResponse> => {
   try {
-    // Extract user info from Google response
     const { email, name, sub: googleId } = googleUser;
-
-    // Call backend to authenticate
     const response = await fetch(`${getApiBaseUrl()}/auth/google`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email,
-        name,
-        googleId,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, googleId }),
     });
-
-    if (!response.ok) {
-      throw new Error('Authentication failed');
-    }
-
+    if (!response.ok) throw new Error('Authentication failed');
     const authResponse: AuthResponse = await response.json();
-
     if (authResponse.success && authResponse.token) {
-      // Store the token and user
       setStoredToken(authResponse.token);
       setStoredUser(authResponse.user);
     }
-
     return authResponse;
   } catch (error) {
     console.error('Sign in error:', error);
     throw error;
   }
+};
+
+export const emailRegister = async (
+  name: string,
+  email: string,
+  password: string
+): Promise<AuthResponse> => {
+  const response = await fetch(`${getApiBaseUrl()}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Registration failed');
+  if (data.success && data.token) {
+    setStoredToken(data.token);
+    setStoredUser(data.user);
+  }
+  return data;
+};
+
+export const emailLogin = async (
+  email: string,
+  password: string
+): Promise<AuthResponse> => {
+  const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Login failed');
+  if (data.success && data.token) {
+    setStoredToken(data.token);
+    setStoredUser(data.user);
+  }
+  return data;
 };
 
 export const signOutUser = async (): Promise<void> => {
