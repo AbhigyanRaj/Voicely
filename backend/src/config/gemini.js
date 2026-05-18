@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import fetch from 'node-fetch';
 import logger from '../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -62,37 +63,120 @@ const callGenerativeMethodWithFallback = async (methodType, options, ...args) =>
   throw lastError;
 };
 
+/**
+ * Utility to parse chat history string into structured OpenAI/Groq messages format
+ */
+export const parseChatHistoryToMessages = (systemPrompt, chatHistory) => {
+  const messages = [
+    { role: 'system', content: systemPrompt }
+  ];
+
+  if (!chatHistory || chatHistory.trim() === '') {
+    return messages;
+  }
+
+  const lines = chatHistory.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('AI:')) {
+      messages.push({ role: 'assistant', content: trimmed.replace('AI:', '').trim() });
+    } else if (trimmed.startsWith('User:')) {
+      messages.push({ role: 'user', content: trimmed.replace('User:', '').trim() });
+    } else if (trimmed.startsWith('[NEW CALL STARTED') || trimmed.startsWith('[PREVIOUS CONVERSATION CONTEXT]')) {
+      messages.push({ role: 'system', content: trimmed });
+    } else if (trimmed !== '') {
+      messages.push({ role: 'user', content: trimmed });
+    }
+  }
+
+  return messages;
+};
+
 export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk) => {
-  const startGemini = performance.now();
-  logger.info(`[LATENCY TIMER] Gemini Stream Query started`);
+  const apiKey = process.env.GROQ_API_KEY;
+  const start = performance.now();
+  logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: llama-3.1-8b-instant)`);
 
   try {
-    const prompt = `${systemPrompt}\n\n--- Conversation History ---\n${chatHistory}\nAI:`;
-    
-    const startFallback = performance.now();
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContentStream', {}, prompt);
-    const fallbackDuration = performance.now() - startFallback;
-    logger.info(`[LATENCY TIMER] callGenerativeMethodWithFallback resolved in ${fallbackDuration.toFixed(1)}ms [Model: ${modelUsed}]`);
+    const messages = parseChatHistoryToMessages(systemPrompt, chatHistory);
 
-    let fullText = '';
-    let isFirstChunk = true;
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: messages,
+        stream: true,
+        max_tokens: 150,
+        temperature: 0.7
+      })
+    });
 
-    for await (const chunk of result.stream) {
-      if (isFirstChunk) {
-        isFirstChunk = false;
-        const firstChunkDuration = performance.now() - startGemini;
-        logger.info(`[LATENCY TIMER] Gemini First Chunk received in ${firstChunkDuration.toFixed(1)}ms`);
-      }
-      const chunkText = chunk.text();
-      fullText += chunkText;
-      if (onChunk) onChunk(chunkText);
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Groq API Error Response:', errorText);
+      throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
     }
 
-    const totalDuration = performance.now() - startGemini;
-    logger.info(`[LATENCY TIMER] Gemini full stream complete in ${totalDuration.toFixed(1)}ms [Length: ${fullText.length}]`);
-    return fullText.trim();
+    return new Promise((resolve, reject) => {
+      let fullText = '';
+      let isFirstChunk = true;
+      let buffer = '';
+
+      response.body.on('data', (chunk) => {
+        buffer += chunk.toString('utf8');
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          const cleanedLine = line.trim();
+          if (!cleanedLine) continue;
+          if (cleanedLine === 'data: [DONE]') continue;
+
+          if (cleanedLine.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(cleanedLine.slice(6));
+              const content = data.choices?.[0]?.delta?.content;
+              if (content) {
+                if (isFirstChunk) {
+                  isFirstChunk = false;
+                  const firstChunkDuration = performance.now() - start;
+                  logger.info(`[LATENCY TIMER] Groq First Chunk received in ${firstChunkDuration.toFixed(1)}ms!`);
+                }
+                fullText += content;
+                if (onChunk) onChunk(content);
+              }
+            } catch (e) {}
+          }
+        }
+      });
+
+      response.body.on('end', () => {
+        // Process remaining buffer
+        if (buffer.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(buffer.slice(6));
+            const content = data.choices?.[0]?.delta?.content;
+            if (content) {
+              fullText += content;
+              if (onChunk) onChunk(content);
+            }
+          } catch (e) {}
+        }
+        const totalDuration = performance.now() - start;
+        logger.info(`[LATENCY TIMER] Groq full stream complete in ${totalDuration.toFixed(1)}ms [Length: ${fullText.length}]`);
+        resolve(fullText.trim());
+      });
+
+      response.body.on('error', (err) => {
+        reject(err);
+      });
+    });
   } catch (error) {
-    logger.error('Gemini conversational stream error', error);
+    logger.error('Groq conversational stream error', error);
     throw error;
   }
 };
