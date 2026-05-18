@@ -5,6 +5,7 @@ import Call from '../models/Call.js';
 import StreamingCallHandler from '../services/streamingCallHandler.js';
 import StreamingGoogleTTS from '../services/streamingGoogleTTS.js';
 import { StreamingSarvamTTS } from '../services/sarvamService.js';
+import StreamingDeepgramTTS from '../services/streamingDeepgramTTS.js';
 import { extractAnswersJSON, evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
 import { broadcastTranscriptUpdate } from '../websocket/liveCallServer.js';
 import * as callService from '../services/callService.js';
@@ -204,12 +205,15 @@ export function setupMediaStreamWebSocket(server = null) {
 
                 // Initialize TTS based on explicit provider preference
                 const ttsProvider = call.ttsProvider || 'google';
+                const isBrowserSandbox = req.url.includes('/browser');
                 
                 let tts;
                 if (ttsProvider === 'sarvam') {
-                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka');
+                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isBrowserSandbox);
+                } else if (ttsProvider === 'deepgram') {
+                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isBrowserSandbox);
                 } else {
-                    tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA');
+                    tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA', isBrowserSandbox);
                 }
                 sessionData.tts = tts;
 

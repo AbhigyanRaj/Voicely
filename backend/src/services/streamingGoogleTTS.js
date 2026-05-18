@@ -8,9 +8,10 @@ import logger from '../utils/logger.js';
  * MULAW audio for Twilio playback on sentence boundaries.
  */
 class StreamingGoogleTTS extends EventEmitter {
-    constructor(voiceType = 'NEERJA') {
+    constructor(voiceType = 'NEERJA', isWebCall = false) {
         super();
         this.voice = GOOGLE_VOICES[voiceType] || GOOGLE_VOICES.NEERJA;
+        this.isWebCall = isWebCall;
         this.textBuffer = '';
         this.isProcessing = false;
         this.audioQueue = []; // Queue of text sentences waiting to be synthesized
@@ -40,9 +41,8 @@ class StreamingGoogleTTS extends EventEmitter {
      * Split buffer on sentence boundaries or natural pauses (commas)
      */
     checkBoundaries() {
-        // Match sentence endings like ., ?, ! or natural pauses like commas followed by space
-        // We only split on commas if the text before it is long enough (> 20 chars)
-        const boundaryTokens = /([.?!]+[\s]+|,[ \s]+)/;
+        // 1. First check for punctuation boundaries (sentence endpoints or commas)
+        const boundaryTokens = /([.?!;।]+[\s]+|,[ \s]+)/;
         const parts = this.textBuffer.split(boundaryTokens);
 
         if (parts.length > 2) { // Need at least [sentence, boundary, remainder]
@@ -55,6 +55,35 @@ class StreamingGoogleTTS extends EventEmitter {
                 i += 2;
             }
             this.textBuffer = parts[parts.length - 1]; // Keep remainder
+            this._processQueue();
+            return;
+        }
+
+        // 2. Connective word boundary fallback: split on connective words if buffer has 5+ words
+        const words = this.textBuffer.trim().split(/\s+/);
+        if (words.length >= 6) {
+            const connectiveIndex = words.findIndex((w, idx) => {
+                if (idx < 2) return false; // Don't split too early
+                const lowerWord = w.toLowerCase().replace(/[^a-zअ-ज्ञ]/g, '');
+                return ['and', 'but', 'or', 'so', 'because', 'कि', 'और', 'तो', 'लेकिन', 'फिर'].includes(lowerWord);
+            });
+
+            if (connectiveIndex !== -1 && connectiveIndex < words.length - 1) {
+                const phrase = words.slice(0, connectiveIndex + 1).join(' ');
+                this.textBuffer = words.slice(connectiveIndex + 1).join(' ') + ' ';
+                logger.debug(`[TTS CHUNKER - GOOGLE] Splitting on connective: "${phrase}"`);
+                this.audioQueue.push(phrase);
+                this._processQueue();
+                return;
+            }
+        }
+
+        // 3. Fallback word limit boundary: if no natural pause is found and we exceed 7 words, split at last word
+        if (words.length >= 8) {
+            const phrase = words.slice(0, 7).join(' ');
+            this.textBuffer = words.slice(7).join(' ') + ' ';
+            logger.debug(`[TTS CHUNKER - GOOGLE] Splitting on word limit fallback: "${phrase}"`);
+            this.audioQueue.push(phrase);
             this._processQueue();
         }
     }
@@ -95,6 +124,7 @@ class StreamingGoogleTTS extends EventEmitter {
             return null;
         }
 
+        const sampleRate = this.isWebCall ? 16000 : 8000;
         const requestBody = {
             input: { text: text },
             voice: {
@@ -104,7 +134,7 @@ class StreamingGoogleTTS extends EventEmitter {
             },
             audioConfig: {
                 audioEncoding: 'MULAW',
-                sampleRateHertz: 8000
+                sampleRateHertz: sampleRate
             }
         };
 

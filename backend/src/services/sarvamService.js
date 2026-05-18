@@ -23,7 +23,7 @@ class SarvamService extends EventEmitter {
      * @param {string} speaker - Speaker name (e.g. 'anushka')
      * @returns {Promise<string>} - Base64 encoded mulaw audio
      */
-    async synthesizeMulaw(text, languageCode = 'hi-IN', speaker = 'anushka') {
+    async synthesizeMulaw(text, languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false) {
         if (!this.apiKey) {
             logger.error('SARVAM_API_KEY not found in environment');
             return null;
@@ -33,6 +33,7 @@ class SarvamService extends EventEmitter {
         logger.info(`[LATENCY TIMER] Starting Sarvam TTS synthesis for text: "${text}"`);
 
         try {
+            const sampleRate = isWebCall ? 16000 : 8000;
             const startNetwork = performance.now();
             const response = await fetch(this.ttsUrl, {
                 method: 'POST',
@@ -45,7 +46,7 @@ class SarvamService extends EventEmitter {
                     target_language_code: languageCode,
                     speaker: speaker, // Dynamic speaker based on param
                     model: 'bulbul:v2',   // Using 'bulbul:v2' (valid model)
-                    sampling_rate: 8000,
+                    sampling_rate: sampleRate,
                     enable_preprocessing: false
                 })
             });
@@ -71,8 +72,8 @@ class SarvamService extends EventEmitter {
             const wav = new WaveFile();
             wav.fromBuffer(wavBuffer);
             
-            // 1. Downsample to 8000Hz for telephony standard
-            wav.toSampleRate(8000);
+            // 1. Downsample to target sampleRate
+            wav.toSampleRate(sampleRate);
             
             // 2. Transcode the Linear PCM to 8-bit Mu-Law
             wav.toMuLaw();
@@ -107,10 +108,11 @@ class SarvamService extends EventEmitter {
  * Buffers text chunks and synthesizes audio using Sarvam AI
  */
 export class StreamingSarvamTTS extends EventEmitter {
-    constructor(languageCode = 'hi-IN', speaker = 'anushka') {
+    constructor(languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false) {
         super();
         this.languageCode = languageCode;
         this.speaker = speaker;
+        this.isWebCall = isWebCall;
         this.textBuffer = '';
         this.isProcessing = false;
         this.audioQueue = [];
@@ -132,7 +134,7 @@ export class StreamingSarvamTTS extends EventEmitter {
 
     checkBoundaries() {
         // 1. First check for punctuation boundaries (sentence endpoints or commas)
-        const boundaryTokens = /([।?!.]+\s+|,[\s]*)/;
+        const boundaryTokens = /([।?!.;]+\s+|,[\s]*)/;
         const parts = this.textBuffer.split(boundaryTokens);
 
         if (parts.length > 2) {
@@ -149,17 +151,32 @@ export class StreamingSarvamTTS extends EventEmitter {
             return;
         }
 
-        // 2. Low-Latency Trigger: Slice off word chunks early (4 words) to hide streaming delays
+        // 2. Connective word boundary fallback: split on connective words if buffer has 5+ words
         const words = this.textBuffer.trim().split(/\s+/);
-        if (words.length >= 5) {
-            const phrase = words.slice(0, 4).join(' ');
-            this.textBuffer = words.slice(4).join(' ') + ' '; // Put remaining back with a trailing space
-            
-            if (phrase.trim().length > 0) {
-                logger.debug(`Low-latency trigger: Synthesizing early phrase chunk: "${phrase}"`);
-                this.audioQueue.push(phrase.trim());
+        if (words.length >= 6) {
+            const connectiveIndex = words.findIndex((w, idx) => {
+                if (idx < 2) return false; // Don't split too early
+                const lowerWord = w.toLowerCase().replace(/[^a-zअ-ज्ञ]/g, '');
+                return ['and', 'but', 'or', 'so', 'because', 'कि', 'और', 'तो', 'लेकिन', 'फिर'].includes(lowerWord);
+            });
+
+            if (connectiveIndex !== -1 && connectiveIndex < words.length - 1) {
+                const phrase = words.slice(0, connectiveIndex + 1).join(' ');
+                this.textBuffer = words.slice(connectiveIndex + 1).join(' ') + ' ';
+                logger.debug(`[TTS CHUNKER - SARVAM] Splitting on connective: "${phrase}"`);
+                this.audioQueue.push(phrase);
                 this._processQueue();
+                return;
             }
+        }
+
+        // 3. Fallback word limit boundary: if no natural pause is found and we exceed 7 words, split at last word
+        if (words.length >= 8) {
+            const phrase = words.slice(0, 7).join(' ');
+            this.textBuffer = words.slice(7).join(' ') + ' ';
+            logger.debug(`[TTS CHUNKER - SARVAM] Splitting on word limit fallback: "${phrase}"`);
+            this.audioQueue.push(phrase);
+            this._processQueue();
         }
     }
 
@@ -170,7 +187,7 @@ export class StreamingSarvamTTS extends EventEmitter {
         try {
             while (this.audioQueue.length > 0) {
                 const textToSynth = this.audioQueue.shift();
-                const audioBase64 = await this.sarvam.synthesizeMulaw(textToSynth, this.languageCode, this.speaker);
+                const audioBase64 = await this.sarvam.synthesizeMulaw(textToSynth, this.languageCode, this.speaker, this.isWebCall);
                 if (audioBase64) {
                     this.emit('audio', audioBase64);
                 }

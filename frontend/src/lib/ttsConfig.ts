@@ -45,3 +45,16 @@ export const SARVAM_VOICES: Record<string, { id: string; label: string; gender: 
   'ta-IN': [{ id: 'anushka', label: 'Anushka', gender: 'Female', desc: 'Tamil Speaker' }, { id: 'hitesh', label: 'Hitesh', gender: 'Male', desc: 'Tamil Speaker' }],
   'te-IN': [{ id: 'manisha', label: 'Manisha', gender: 'Female', desc: 'Telugu Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Telugu Speaker' }]
 };
+
+export const DEEPGRAM_LANGUAGES = [
+  { code: 'en-US', label: 'English (US)' }
+];
+
+export const DEEPGRAM_VOICES: Record<string, { id: string; label: string; gender: string; desc?: string }[]> = {
+  'en-US': [
+    { id: 'aura-asteria-en', label: 'Asteria (US)', gender: 'Female', desc: 'Fluent & Conversational' },
+    { id: 'aura-luna-en', label: 'Luna (US)', gender: 'Female', desc: 'Fluent & Professional' },
+    { id: 'aura-orpheus-en', label: 'Orpheus (US)', gender: 'Male', desc: 'Fluent & Professional' },
+    { id: 'aura-zeus-en', label: 'Zeus (US)', gender: 'Male', desc: 'Fluent & Conversational' }
+  ]
+};

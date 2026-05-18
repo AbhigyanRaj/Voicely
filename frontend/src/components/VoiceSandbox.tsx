@@ -4,7 +4,14 @@ import { Button } from "./ui/button";
 import { getUserModules, getStoredToken } from "../lib/auth";
 import type { VoiceModule } from "../lib/auth";
 import { getApiBaseUrl } from "../lib/api";
-import { SARVAM_LANGUAGES, SARVAM_VOICES } from "../lib/ttsConfig";
+import { 
+  SARVAM_LANGUAGES, 
+  SARVAM_VOICES,
+  DEEPGRAM_LANGUAGES,
+  DEEPGRAM_VOICES,
+  GOOGLE_LANGUAGES,
+  GOOGLE_VOICES
+} from "../lib/ttsConfig";
 
 interface VoiceSandboxProps {
   open: boolean;
@@ -24,8 +31,9 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [customerName, setCustomerName] = useState<string>("Aditya");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("hi-IN");
-  const [selectedVoice, setSelectedVoice] = useState<string>("anushka");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
+  const [selectedVoice, setSelectedVoice] = useState<string>("aura-asteria-en");
+  const [ttsProvider, setTtsProvider] = useState<string>("deepgram");
 
   // Sync selected voice list when selectedModuleId changes
   useEffect(() => {
@@ -38,16 +46,24 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     }
   }, [selectedModuleId, modules]);
 
-  // Adjust default voice if selected language is manually overridden
+  // Adjust default voice if selected language or ttsProvider is manually overridden
   useEffect(() => {
-    const availableVoices = SARVAM_VOICES[selectedLanguage] || [];
+    let availableVoices = [];
+    if (ttsProvider === 'sarvam') {
+      availableVoices = SARVAM_VOICES[selectedLanguage] || [];
+    } else if (ttsProvider === 'deepgram') {
+      availableVoices = DEEPGRAM_VOICES[selectedLanguage] || [];
+    } else {
+      availableVoices = GOOGLE_VOICES[selectedLanguage] || [];
+    }
+
     if (availableVoices.length > 0) {
       const match = availableVoices.find(v => v.id === selectedVoice);
       if (!match) {
         setSelectedVoice(availableVoices[0].id);
       }
     }
-  }, [selectedLanguage]);
+  }, [selectedLanguage, ttsProvider]);
   
   // Active session state
   const [callRecord, setCallRecord] = useState<any>(null);
@@ -232,7 +248,9 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       audioContext.resume();
     }
 
-    const audioBuffer = audioContext.createBuffer(1, float32Data.length, 8000);
+    // Wideband HD Voice 16kHz for sandbox testing
+    const activeSampleRate = ttsProvider ? 16000 : 8000;
+    const audioBuffer = audioContext.createBuffer(1, float32Data.length, activeSampleRate);
     audioBuffer.getChannelData(0).set(float32Data);
 
     const source = audioContext.createBufferSource();
@@ -322,7 +340,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
           customerName: customerName.trim(),
           selectedVoice,
           selectedLanguage,
-          ttsProvider: 'sarvam'
+          ttsProvider
         })
       });
 
@@ -586,7 +604,42 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                      TTS Engine
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={ttsProvider}
+                        onChange={(e) => {
+                          const provider = e.target.value;
+                          setTtsProvider(provider);
+                          if (provider === 'deepgram') {
+                            setSelectedLanguage('en-US');
+                            setSelectedVoice('aura-asteria-en');
+                          } else if (provider === 'sarvam') {
+                            setSelectedLanguage('hi-IN');
+                            setSelectedVoice('anushka');
+                          } else {
+                            setSelectedLanguage('en-IN');
+                            setSelectedVoice('NEERJA');
+                          }
+                        }}
+                        className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
+                      >
+                        <option value="deepgram" className="bg-zinc-900 text-white font-semibold">Deepgram Aura (Premium)</option>
+                        <option value="sarvam" className="bg-zinc-900 text-white font-semibold">Sarvam AI (Regional)</option>
+                        <option value="google" className="bg-zinc-900 text-white font-semibold">Google Cloud</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
                       Language Override
@@ -597,7 +650,17 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                         onChange={(e) => setSelectedLanguage(e.target.value)}
                         className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
                       >
-                        {SARVAM_LANGUAGES.map((l) => (
+                        {ttsProvider === 'sarvam' && SARVAM_LANGUAGES.map((l) => (
+                          <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
+                            {l.label}
+                          </option>
+                        ))}
+                        {ttsProvider === 'deepgram' && DEEPGRAM_LANGUAGES.map((l) => (
+                          <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
+                            {l.label}
+                          </option>
+                        ))}
+                        {ttsProvider === 'google' && GOOGLE_LANGUAGES.map((l) => (
                           <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
                             {l.label}
                           </option>
@@ -621,9 +684,19 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                         onChange={(e) => setSelectedVoice(e.target.value)}
                         className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
                       >
-                        {(SARVAM_VOICES[selectedLanguage] || []).map((v) => (
+                        {ttsProvider === 'sarvam' && (SARVAM_VOICES[selectedLanguage] || []).map((v) => (
                           <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
-                            {v.label}
+                            {v.label} ({v.gender})
+                          </option>
+                        ))}
+                        {ttsProvider === 'deepgram' && (DEEPGRAM_VOICES[selectedLanguage] || []).map((v) => (
+                          <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
+                            {v.label} ({v.gender})
+                          </option>
+                        ))}
+                        {ttsProvider === 'google' && (GOOGLE_VOICES[selectedLanguage] || []).map((v) => (
+                          <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
+                            {v.label} ({v.gender})
                           </option>
                         ))}
                       </select>

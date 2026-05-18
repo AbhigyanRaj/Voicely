@@ -191,14 +191,44 @@ export const transcribeAudio = async (audioBuffer) => {
   }
 };
 
+export const callGroqChatCompletion = async (messages, modelName = 'llama-3.1-70b-versatile') => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("GROQ_API_KEY not configured in environment");
+  }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: messages,
+      temperature: 0.2,
+      max_tokens: 1024
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`Groq Chat API Error [${response.status}]:`, errorText);
+    throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || '';
+};
+
 export const generateSummary = async (text) => {
   try {
-    const prompt = `You are a helpful assistant that summarizes call transcripts and extracts key insights. Please summarize this call transcript and extract key insights: ${text}`;
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    const response = await result.response;
-    return response.text().trim();
+    const messages = [
+      { role: 'user', content: `You are a helpful assistant that summarizes call transcripts and extracts key insights. Please summarize this call transcript and extract key insights: ${text}` }
+    ];
+    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
   } catch (error) {
-    logger.error('Summary generation error', error);
+    logger.error('Summary generation error via Groq', error);
     throw error;
   }
 };
@@ -218,15 +248,15 @@ export const extractAnswersJSON = async (chatHistory, questions) => {
     
     Return a strictly valid JSON object where the keys are the exact questions as strings, and the values are the user's extracted answers. If a question was not answered or wasn't reached, set the value to "Not answered". Do NOT include Markdown blocks like \`\`\`json. Return only the raw JSON string.`;
 
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    let responseText = result.response.text().trim();
+    const messages = [{ role: 'user', content: prompt }];
+    let responseText = await callGroqChatCompletion(messages, 'llama-3.1-70b-versatile');
 
-    // Strip markdown formatting if Gemini included it despite instructions
+    // Strip markdown formatting if LLM included it despite instructions
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
     return JSON.parse(responseText);
   } catch (error) {
-    logger.error('Data extraction error (JSON parsing or API issue)', error);
+    logger.error('Data extraction error via Groq (JSON parsing or API issue)', error);
     return {};
   }
 };
@@ -254,11 +284,10 @@ You are a loan decisioning expert. Respond only with YES, NO, or INVESTIGATION_R
 `;
 
   try {
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    const response = await result.response;
-    return response.text().trim();
+    const messages = [{ role: 'user', content: prompt }];
+    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
   } catch (error) {
-    logger.error('Loan evaluation error', error);
+    logger.error('Loan evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
   }
 };
@@ -287,11 +316,10 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 `;
 
   try {
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    const response = await result.response;
-    return response.text().trim();
+    const messages = [{ role: 'user', content: prompt }];
+    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
   } catch (error) {
-    logger.error('Credit card evaluation error', error);
+    logger.error('Credit card evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
   }
 };
@@ -301,11 +329,10 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
  */
 export const analyzeResponseWithGemini = async (prompt) => {
   try {
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    const response = await result.response;
-    return response.text().trim();
+    const messages = [{ role: 'user', content: prompt }];
+    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
   } catch (error) {
-    logger.error('Gemini analysis error', error);
+    logger.error('Groq analysis error', error);
     throw error;
   }
 };
@@ -391,15 +418,15 @@ Rules:
 `;
 
   try {
-    const { result, modelUsed } = await callGenerativeMethodWithFallback('generateContent', {}, prompt);
-    let responseText = result.response.text().trim();
+    const messages = [{ role: 'user', content: prompt }];
+    let responseText = await callGroqChatCompletion(messages, 'llama-3.1-70b-versatile');
     
     // Safety: Strip markdown
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
     
     return JSON.parse(responseText);
   } catch (error) {
-    logger.error('Deep analysis error', error);
+    logger.error('Deep analysis error via Groq', error);
     return {
       sentiment: 'Neutral',
       objections: [],
