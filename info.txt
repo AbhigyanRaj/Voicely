@@ -1,0 +1,126 @@
+================================================================================
+🚀 VOICELY (VOK.AI) - COMPLETE ARCHITECTURAL & TECHNICAL DOCUMENTATION
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+Voicely is a high-performance, real-time conversational AI voice platform. It 
+enables automated voice interactions that feel indistinguishable from human 
+conversation, characterized by ultra-low latency (<1.5s) and intelligent 
+behavioral understanding.
+
+Mission: To bridge the gap between AI and human voice interaction using 
+cutting-edge streaming technologies and regional language mastery.
+
+2. CORE TECH STACK
+--------------------------------------------------------------------------------
+FRONTEND:
+- Framework: React 19 (Vite)
+- Language: TypeScript
+- Styling: Tailwind CSS v4 (Custom UI System)
+- Data Viz: Recharts (for deep behavioral analytics)
+- Icons: Lucide React
+
+BACKEND:
+- Runtime: Node.js (ES Modules)
+- Server: Express.js
+- Database: MongoDB (Mongoose ODM)
+- Real-time: WebSocket (ws) for media streams and dashboard updates
+
+AI & EXTERNAL SERVICES:
+- Telephony: Twilio (Programmable Voice + Media Streams)
+- STT (Speech-to-Text): Deepgram (Nova-2-Phonecall & Nova-3 for Indic languages)
+- LLM (Brain): Google Gemini 1.5 Flash (Streaming mode via v1beta endpoint)
+- TTS (Text-to-Speech): 
+  - Google Cloud TTS (Premium Neural Voices)
+  - Sarvam AI (Optimized for Indian regional languages)
+  - ElevenLabs (High-fidelity fallback)
+- Messaging: Telegram Bot API (for instant post-call summaries)
+
+3. THE REAL-TIME AI PIPELINE (STEP-BY-STEP)
+--------------------------------------------------------------------------------
+The project's primary technical achievement is the "Zero-Wait" pipeline:
+
+Step 1: Audio Ingest (Twilio -> Backend)
+   - Twilio establishes a bi-directional WebSocket connection.
+   - Raw 'mulaw' 8kHz audio packets are streamed to the backend.
+
+Step 2: Real-time STT (Backend -> Deepgram)
+   - The backend forwards audio bytes to Deepgram Live.
+   - Deepgram returns "Interim" (partial) and "Final" transcripts.
+
+Step 3: Intelligence (Deepgram -> Gemini)
+   - Transcripts are fed into the 'StreamingCallHandler'.
+   - It maintains short-term memory (Chat History) and Persona (System Prompt).
+   - Gemini 1.5 Flash starts streaming tokens immediately.
+
+Step 4: Sentence Boundary Buffering (Gemini -> TTS)
+   - The system does NOT wait for the full AI response.
+   - It buffers tokens until it detects a sentence boundary (., !, ?, or ,).
+   - Once a sentence is complete, it is sent to TTS while the next sentence 
+     is still being generated.
+
+Step 5: Audio Output (TTS -> Twilio)
+   - TTS returns 'mulaw' audio base64 packets.
+   - These are sent back through the WebSocket to Twilio for immediate playback.
+
+4. KEY TECHNICAL FEATURES
+--------------------------------------------------------------------------------
+A. BARGE-IN DETECTION (INTERRUPTION HANDLING)
+   - The system constantly monitors for user speech.
+   - If a user speaks while the AI is talking, a 'clear' signal is sent to 
+     Twilio, killing the current audio queue.
+   - The AI stops thinking and waits for the new user input.
+
+B. REGIONAL LANGUAGE MASTERY
+   - Specifically optimized for the Indian market.
+   - Uses Deepgram Nova-3 for superior accuracy in Hindi, Marathi, Telugu, etc.
+   - Leverages Sarvam AI TTS for natural-sounding regional accents.
+
+C. HUMAN-IN-THE-LOOP (INTERVENTION)
+   - A live dashboard allows admins to monitor active calls.
+   - "Executive Intervention": Admins can type a response, which the AI 
+     immediately speaks into the call, effectively taking over the conversation.
+
+D. DEEP BEHAVIORAL ANALYTICS
+   - Post-call, Gemini performs a "Deep Analysis" of the transcript.
+   - Extracts: Sentiment, Objections, Intent Tiers (High/Medium/Low), and 
+     structured JSON answers to specific business questions.
+
+5. DIRECTORY STRUCTURE (BACKEND)
+--------------------------------------------------------------------------------
+src/
+├── config/             # AI Service configurations (Gemini, Google TTS)
+├── controllers/        # Route handlers for calls and workspaces
+├── middleware/         # Auth (JWT) and logging middlewares
+├── models/             # Mongoose Schemas (Call, Module, Workspace, Lead)
+├── routes/             # API Endpoints & WebSocket Switchboard
+├── services/           # Core Logic:
+│   ├── streamingCallHandler.js  # The Brain (Conversation Management)
+│   ├── deepgramService.js       # Audio Ingest & STT
+│   ├── ttsService.js           # Audio Synthesis & Buffering
+│   ├── leadService.js          # Syncing calls to Lead Journeys
+├── utils/              # Loggers and helpers
+└── websocket/          # Live dashboard broadcasting
+
+6. DATA ARCHITECTURE
+--------------------------------------------------------------------------------
+- CALL: Linked to Module, Workspace, and User. Stores duration, status, 
+  transcription, and a complex 'evaluation' object.
+- MODULE: Defines the AI's "Job." Contains persona, system prompt, and a 
+  set of questions to be asked sequentially.
+- LEAD: Represents a long-term customer. Stores a 'Timeline' of all 
+  interactions/calls with that specific phone number.
+
+7. LATENCY OPTIMIZATION SECRETS
+--------------------------------------------------------------------------------
+1. Direct Mulaw: Requests audio in mulaw format from Google TTS to avoid 
+   FFmpeg transcoding delay.
+2. Global V1 Endpoint: Forces stable v1/v1beta API endpoints for Gemini 
+   to avoid experimental latency spikes.
+3. Cold-Start Mitigation: Pre-initializes STT/TTS connections before the 
+   user starts speaking.
+
+================================================================================
+Generated by Voicely AI Engine | 2026-04-30
+================================================================================

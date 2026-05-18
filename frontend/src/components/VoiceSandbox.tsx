@@ -21,7 +21,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [stage, setStage] = useState<'setup' | 'connecting' | 'connected' | 'ended'>('setup');
   const [modules, setModules] = useState<VoiceModule[]>([]);
   const [selectedModuleId, setSelectedModuleId] = useState<string>("");
-  const [customerName, setCustomerName] = useState<string>("Jane Doe");
+  const [customerName, setCustomerName] = useState<string>("Aditya");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>("hi-IN");
@@ -571,7 +571,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                       type="text"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Jane Doe"
+                      placeholder="Aditiya"
                       className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl pl-11 pr-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all"
                     />
                   </div>
