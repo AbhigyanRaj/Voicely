@@ -9,8 +9,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * to safeguard against 404 Model Not Found and 429 Quota Exceeded exceptions.
  */
 const callGenerativeMethodWithFallback = async (methodType, options, ...args) => {
-  // Ordered sequence of fallback models - gemini-flash-latest has the highest active working quota on this key
-  const models = ["gemini-flash-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
+  // Ordered sequence of fallback models - gemini-2.0-flash-lite is optimized for real-time voice latency
+  const models = ["gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash"];
   let lastError = null;
 
   // Try v1beta endpoints first (usually best for experimental real-time/TTS/lite models)

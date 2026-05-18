@@ -287,7 +287,7 @@ export function setupMediaStreamWebSocket(server = null) {
                   language: sttLanguage,
                   smart_format: true,
                   interim_results: true,
-                  endpointing: 300,
+                  endpointing: 200,
                   encoding: 'mulaw',
                   sample_rate: 8000,
                   channels: 1,
@@ -370,7 +370,7 @@ export function setupMediaStreamWebSocket(server = null) {
                         }
                       }
                     }
-                  }, 650);
+                  }, 250);
                 });
 
                 deepgramService.on('error', (error) => {

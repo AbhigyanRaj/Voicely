@@ -46,7 +46,7 @@ class SarvamService extends EventEmitter {
                     speaker: speaker, // Dynamic speaker based on param
                     model: 'bulbul:v2',   // Using 'bulbul:v2' (valid model)
                     sampling_rate: 8000,
-                    enable_preprocessing: true
+                    enable_preprocessing: false
                 })
             });
 
