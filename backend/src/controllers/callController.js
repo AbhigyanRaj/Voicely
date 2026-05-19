@@ -8,6 +8,7 @@ import { broadcastCallStatus } from '../websocket/liveCallServer.js';
 import { sendUpdateByUserId } from '../services/botService.js';
 import * as leadService from '../services/leadService.js';
 import logger from '../utils/logger.js';
+import { getDemoAgentModule } from '../config/demoAgents.js';
 
 /**
  * Initiate a call
@@ -88,7 +89,8 @@ export const initiateCall = async (req, res) => {
 export const initiateBrowserSandboxCall = async (req, res) => {
     try {
         const { moduleId, customerName, selectedVoice, selectedLanguage, ttsProvider } = req.body;
-        const userId = req.user._id;
+        const userId = req.user ? req.user._id : null;
+        const workspaceId = req.user && req.user.currentWorkspace ? req.user.currentWorkspace._id : null;
 
         logger.info(`Browser Sandbox Call Request: [Customer: ${customerName}] [Module: ${moduleId}]`);
 
@@ -96,20 +98,33 @@ export const initiateBrowserSandboxCall = async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        const module = await Module.findById(moduleId);
-        if (!module) return res.status(404).json({ error: 'Module not found' });
+        let module = null;
+        let finalVoice = selectedVoice || 'anushka';
+        let finalLanguage = selectedLanguage || 'hi-IN';
+        let finalProvider = ttsProvider || 'sarvam';
+        const isDemo = typeof moduleId === 'string' && moduleId.startsWith('demo-agent-');
 
-        const finalVoice = selectedVoice || module.selectedVoice || 'NEERJA';
-        const finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
-        const finalProvider = ttsProvider || module.ttsProvider || 'google';
+        if (isDemo) {
+            const demoDetails = getDemoAgentModule(moduleId);
+            module = {
+                name: demoDetails.name
+            };
+        } else {
+            module = await Module.findById(moduleId);
+            if (!module) return res.status(404).json({ error: 'Module not found' });
+            finalVoice = selectedVoice || module.selectedVoice || 'NEERJA';
+            finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
+            finalProvider = ttsProvider || module.ttsProvider || 'google';
+        }
 
         // Generate a unique browser sandbox Call SID
         const sandboxCallSid = 'browser_sandbox_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
         const callRecord = await Call.create({
             userId,
-            workspaceId: req.user.currentWorkspace?._id,
-            moduleId,
+            workspaceId,
+            moduleId: isDemo ? undefined : moduleId,
+            demoAgentId: isDemo ? moduleId : undefined,
             customerName: customerName.trim(),
             phoneNumber: '+1000000000', // Mock Sandbox phone number
             twilioCallSid: sandboxCallSid,
@@ -122,11 +137,13 @@ export const initiateBrowserSandboxCall = async (req, res) => {
         });
 
         // Trigger early lead timeline sync
-        try {
-            await leadService.syncCallToLead(callRecord);
-            logger.info(`Early lead sync successful for Browser Sandbox Call ${callRecord.twilioCallSid}`);
-        } catch (leadErr) {
-            logger.error(`Early lead sync failed:`, leadErr);
+        if (workspaceId) {
+            try {
+                await leadService.syncCallToLead(callRecord);
+                logger.info(`Early lead sync successful for Browser Sandbox Call ${callRecord.twilioCallSid}`);
+            } catch (leadErr) {
+                logger.error(`Early lead sync failed:`, leadErr);
+            }
         }
 
         broadcastCallStatus(callRecord._id.toString(), 'started', {

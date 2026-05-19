@@ -145,33 +145,24 @@ const Hero: React.FC = () => {
           
           {/* Refined Action Area */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16 animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-500 w-full px-4 sm:w-auto">
+            <Button 
+              onClick={() => setSandboxOpen(true)}
+              className="h-11 px-8 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 w-full sm:w-auto"
+            >
+              <Mic className="w-3.5 h-3.5 mr-2 text-indigo-600 animate-pulse" />
+              TRY VOICE AGENT
+            </Button>
+
             {!user ? (
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <Button 
-                  onClick={() => openAuth('signup')}
-                  className="h-11 px-6 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 w-full sm:w-auto"
-                >
-                  <UserPlus className="w-3.5 h-3.5 mr-2" />
-                  GET STARTED
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => openAuth('login')}
-                  className="h-11 px-6 rounded-full border-white/10 bg-white/5 backdrop-blur-md text-white hover:bg-white/10 font-bold text-xs transition-all w-full sm:w-auto"
-                >
-                  <LogIn className="w-3.5 h-3.5 mr-2" />
-                  SIGN IN
-                </Button>
-              </div>
-            ) : (
               <Button 
-                onClick={() => setSandboxOpen(true)}
-                className="h-11 px-8 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 w-full sm:w-auto"
+                variant="outline"
+                onClick={() => openAuth('signup')}
+                className="h-11 px-6 rounded-full border-white/10 bg-white/5 backdrop-blur-md text-white hover:bg-white/10 font-bold text-xs transition-all w-full sm:w-auto"
               >
-                <Mic className="w-3.5 h-3.5 mr-2 text-indigo-600 animate-pulse" />
-                TRY VOICE AGENT
+                <UserPlus className="w-3.5 h-3.5 mr-2" />
+                GET STARTED
               </Button>
-            )}
+            ) : null}
             
             <button 
               onClick={() => setModalOpen(true)}

@@ -3,6 +3,7 @@ import { generateConversationalResponseStream } from '../config/gemini.js';
 import Call from '../models/Call.js';
 import Module from '../models/Module.js';
 import logger from '../utils/logger.js';
+import { getDemoAgentModule } from '../config/demoAgents.js';
 
 /**
  * Handles streaming call logic with real-time transcription
@@ -29,10 +30,14 @@ class StreamingCallHandler extends EventEmitter {
    */
   async initialize() {
     try {
-      this.module = await Module.findById(this.moduleId);
-      if (!this.module) throw new Error('Module not found');
-
       this.call = await Call.findOne({ twilioCallSid: this.callSid });
+
+      if (this.call && this.call.demoAgentId) {
+        this.module = getDemoAgentModule(this.call.demoAgentId);
+      } else {
+        this.module = await Module.findById(this.moduleId);
+        if (!this.module) throw new Error('Module not found');
+      }
       const targetLanguage = (this.call?.selectedLanguage || 'english').toLowerCase();
       const languageInstruction = `CRITICAL LANGUAGE RULE: Your primary language is ${targetLanguage}. 
 - You MUST initiate the conversation in ${targetLanguage}. 

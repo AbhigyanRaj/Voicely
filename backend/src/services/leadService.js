@@ -9,6 +9,11 @@ export const syncCallToLead = async (call, deepAnalysis) => {
   try {
     const { phoneNumber, workspaceId, customerName, _id: callId } = call;
     
+    if (!workspaceId) {
+      logger.info('Skipping lead sync for anonymous/workspace-less call');
+      return null;
+    }
+    
     // 1. Find or create lead
     let lead = await Lead.findOne({ phoneNumber, workspaceId });
     

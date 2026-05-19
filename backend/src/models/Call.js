@@ -4,7 +4,6 @@ const callSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
   },
   workspaceId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -13,7 +12,10 @@ const callSchema = new mongoose.Schema({
   moduleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Module',
-    required: true,
+  },
+  demoAgentId: {
+    type: String,
+    default: null,
   },
   customerName: {
     type: String,

@@ -9,10 +9,16 @@ const router = express.Router();
 router.post('/handle-call', validateTwilioRequest, callController.handleCallWebhook);
 router.post('/status', callController.handleStatus);
 
-// API Routes
+// API Routes (Optional protect for sandbox calls)
+router.post('/browser-sandbox', (req, res, next) => {
+    if (req.headers.authorization) {
+        return protect(req, res, next);
+    }
+    next();
+}, callController.initiateBrowserSandboxCall);
+
 router.use(protect);
 router.post('/initiate', callController.initiateCall);
-router.post('/browser-sandbox', callController.initiateBrowserSandboxCall);
 router.get('/history', callController.getCallHistory);
 router.get('/:id', callController.getCallById);
 

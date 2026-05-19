@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { getUserModules, getStoredToken } from "../lib/auth";
 import type { VoiceModule } from "../lib/auth";
 import { getApiBaseUrl } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 import { 
   SARVAM_LANGUAGES, 
   SARVAM_VOICES,
@@ -12,6 +13,33 @@ import {
   GOOGLE_LANGUAGES,
   GOOGLE_VOICES
 } from "../lib/ttsConfig";
+
+export const DEMO_AGENTS = [
+  {
+    id: 'demo-agent-enthusiastic',
+    name: 'Aarav (Enthusiastic Promoter)',
+    emotion: 'Enthusiastic',
+    description: 'High energy, fast-paced representative promoting premium plans with dynamic voice modulation.'
+  },
+  {
+    id: 'demo-agent-calm',
+    name: 'Ananya (Calm Corporate Advisor)',
+    emotion: 'Calm/Professional',
+    description: 'Steady, reassuring corporate advisor collecting processes and latency challenges.'
+  },
+  {
+    id: 'demo-agent-feedback',
+    name: 'Rohan (Feedback Collector)',
+    emotion: 'Success Specialist',
+    description: 'Friendly Success Agent seeking user reviews on IVR and phone line frustrations.'
+  },
+  {
+    id: 'demo-agent-support',
+    name: 'Kavya (Friendly Customer Support)',
+    emotion: 'Friendly/Empathetic',
+    description: 'Empathetic Customer Success agent resolving login and account issues.'
+  }
+];
 
 interface VoiceSandboxProps {
   open: boolean;
@@ -25,9 +53,11 @@ interface TranscriptLine {
 }
 
 export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => {
+  const { user } = useAuth();
   const [stage, setStage] = useState<'setup' | 'connecting' | 'connected' | 'ended'>('setup');
+  const [agentSource, setAgentSource] = useState<'demo' | 'custom'>('demo');
   const [modules, setModules] = useState<VoiceModule[]>([]);
-  const [selectedModuleId, setSelectedModuleId] = useState<string>("");
+  const [selectedModuleId, setSelectedModuleId] = useState<string>("demo-agent-calm");
   const [customerName, setCustomerName] = useState<string>("Aditya");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
@@ -100,9 +130,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         try {
           const fetched = await getUserModules();
           setModules(fetched);
-          if (fetched.length > 0) {
-            setSelectedModuleId(fetched[0]._id || fetched[0].id || "");
-          }
         } catch (err) {
           console.error("Failed to load modules for sandbox:", err);
         } finally {
@@ -112,6 +139,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       loadModules();
       
       // Reset state
+      setAgentSource('demo');
+      setSelectedModuleId('demo-agent-calm');
       setStage('setup');
       setTranscript([]);
       setCallRecord(null);
@@ -327,14 +356,17 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     setCallRecord(null);
 
     const token = getStoredToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json"
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
 
     try {
       const response = await fetch(`${getApiBaseUrl()}/calls/browser-sandbox`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({
           moduleId: selectedModuleId,
           customerName: customerName.trim(),
@@ -558,32 +590,109 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
             ) : (
               <div className="space-y-4">
                 <div>
+                  <div className="flex bg-zinc-950/40 rounded-full p-1 mb-4 border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAgentSource('demo');
+                        setSelectedModuleId('demo-agent-calm');
+                      }}
+                      className={`flex-1 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
+                        agentSource === 'demo' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Demo Agents
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (user) {
+                          setAgentSource('custom');
+                          if (modules.length > 0) {
+                            setSelectedModuleId(modules[0]._id || modules[0].id || "");
+                          } else {
+                            setSelectedModuleId("");
+                          }
+                        } else {
+                          alert("Please sign in or create an account to test your own custom voice agents.");
+                        }
+                      }}
+                      className={`flex-1 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
+                        agentSource === 'custom' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                      } ${!user ? 'opacity-50' : ''}`}
+                    >
+                      Custom Agents
+                    </button>
+                  </div>
+
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
                     Select Voice Agent
                   </label>
-                  {modules.length === 0 ? (
-                    <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-xl text-center">
-                      <AlertCircle className="w-5 h-5 text-amber-500 mx-auto mb-2" />
-                      <p className="text-xs text-zinc-500">No active Voice Agents found. Please create a module first.</p>
+
+                  {agentSource === 'demo' ? (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <select
+                          value={selectedModuleId}
+                          onChange={(e) => setSelectedModuleId(e.target.value)}
+                          className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-medium"
+                        >
+                          {DEMO_AGENTS.map((d) => (
+                            <option key={d.id} value={d.id} className="bg-zinc-900 text-white">
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+
+                      {/* Demo Agent Details Card */}
+                      {(() => {
+                        const currentDemo = DEMO_AGENTS.find(d => d.id === selectedModuleId);
+                        if (!currentDemo) return null;
+                        return (
+                          <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl animate-in fade-in duration-300">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-[9px] font-extrabold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                {currentDemo.emotion}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-zinc-400 leading-normal">{currentDemo.description}</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
-                    <div className="relative">
-                      <select
-                        value={selectedModuleId}
-                        onChange={(e) => setSelectedModuleId(e.target.value)}
-                        className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer"
-                      >
-                        {modules.map((m) => (
-                          <option key={m._id || m.id} value={m._id || m.id} className="bg-zinc-900 text-white">
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
+                    <div>
+                      {modules.length === 0 ? (
+                        <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-xl text-center">
+                          <AlertCircle className="w-5 h-5 text-amber-500 mx-auto mb-2" />
+                          <p className="text-xs text-zinc-500">No active Voice Agents found. Please create a module first.</p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <select
+                            value={selectedModuleId}
+                            onChange={(e) => setSelectedModuleId(e.target.value)}
+                            className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer"
+                          >
+                            {modules.map((m) => (
+                              <option key={m._id || m.id} value={m._id || m.id} className="bg-zinc-900 text-white">
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
