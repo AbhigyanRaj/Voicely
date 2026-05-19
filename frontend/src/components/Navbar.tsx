@@ -237,7 +237,7 @@ const Navbar: React.FC = () => {
                   ))}
                   <button
                     onClick={() => setCreateModuleOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:text-white hover:bg-blue-600/20 transition-all hover:scale-[1.03] active:scale-[0.97]"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:text-white hover:bg-blue-600/20 transition-all hover:scale-[1.03] active:scale-[0.97]"
                   >
                     <Layers className="w-3.5 h-3.5 animate-pulse" />
                     Create Agent
@@ -252,14 +252,14 @@ const Navbar: React.FC = () => {
                     <a
                       href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                       target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition-colors"
                     >
                       <PlayCircle className="w-3.5 h-3.5 text-zinc-400" />
                       Demo
                     </a>
                     <Link
                       to="/buy-token"
-                      className="flex items-center gap-1.5 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 rounded-md px-3 py-1.5 transition-colors group"
+                      className="flex items-center gap-1.5 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 rounded-full px-3 py-1.5 transition-colors group"
                     >
                       <Crown className={`w-3.5 h-3.5 group-hover:text-blue-300 ${userPlan === 'Pro' ? 'text-blue-400' : 'text-zinc-500'}`} />
                       <span className="text-xs font-medium text-zinc-300 group-hover:text-white">{userPlan}</span>
@@ -276,13 +276,13 @@ const Navbar: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => setAuthModal('login')}
-                      className="text-zinc-300 hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                      className="text-zinc-300 hover:text-white px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
                     >
                       Sign In
                     </button>
                     <button
                       onClick={() => setAuthModal('signup')}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors"
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
                     >
                       Get Started
                     </button>
@@ -322,7 +322,7 @@ const Navbar: React.FC = () => {
                     ))}
                     <button
                       onClick={() => { setCreateModuleOpen(true); setIsMenuOpen(false); }}
-                      className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:text-white hover:bg-blue-600/20 transition-all"
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-full text-sm font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:text-white hover:bg-blue-600/20 transition-all"
                     >
                       <Layers className="w-4 h-4" />
                       Create Agent
@@ -342,13 +342,13 @@ const Navbar: React.FC = () => {
                 <div className="space-y-2">
                   <button
                     onClick={() => { setAuthModal('login'); setIsMenuOpen(false); }}
-                    className="block w-full text-left text-zinc-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                    className="block w-full text-left text-zinc-300 hover:text-white px-3 py-2 rounded-full text-sm font-medium transition-colors"
                   >
                     Sign In
                   </button>
                   <button
                     onClick={() => { setAuthModal('signup'); setIsMenuOpen(false); }}
-                    className="block w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-md text-sm font-bold transition-colors"
+                    className="block w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-full text-sm font-bold transition-colors"
                   >
                     Get Started
                   </button>

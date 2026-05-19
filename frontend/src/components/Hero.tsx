@@ -120,96 +120,96 @@ const Hero: React.FC = () => {
         }
       `}</style>
       
-      <section className="flex flex-col items-center justify-center min-h-screen w-full text-center px-4 mesh-gradient bg-zinc-950 text-white relative overflow-hidden pt-12">
+      <section className="flex flex-col items-center justify-center min-h-screen w-full text-center px-4 mesh-gradient bg-zinc-950 text-white relative overflow-hidden pt-16 pb-12">
         {/* Animated Glow Elements */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-rose-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-rose-500/10 rounded-full blur-[120px] pointer-events-none" style={{ animationDelay: '2s' }}></div>
         
         <div className="relative z-10 max-w-5xl mx-auto w-full flex flex-col items-center">
           {/* Version Badge */}
-          <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+          <div className="mb-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
-              <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-400">Platform v2.0 Live</span>
+              <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-400">Platform v2.0 Live</span>
             </div>
           </div>
 
           {/* Main Title */}
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-6 tracking-[-0.04em] leading-[0.9] font-[Sora] select-none bg-gradient-to-b from-white to-white/50 bg-clip-text text-transparent px-2 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold mb-4 tracking-[-0.04em] leading-[0.95] font-[Sora] select-none bg-gradient-to-b from-white to-white/50 bg-clip-text text-transparent px-2 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200">
             Voicely
           </h1>
           
-          <p className="text-sm sm:text-base md:text-lg mb-10 max-w-xl mx-auto font-medium text-zinc-400 leading-relaxed px-4 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
+          <p className="text-xs sm:text-sm md:text-base mb-8 max-w-lg mx-auto font-medium text-zinc-400 leading-relaxed px-4 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
             Advanced AI Voice Automation for Seamless Lead Qualification and Intelligent Journey Management.
           </p>
           
           {/* Refined Action Area */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20 animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-500">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16 animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-500 w-full px-4 sm:w-auto">
             {!user ? (
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                 <Button 
                   onClick={() => openAuth('signup')}
-                  className="h-14 px-8 rounded-2xl bg-white text-black hover:bg-zinc-200 font-bold text-sm shadow-[0_20px_40px_-15px_rgba(255,255,255,0.2)] transition-all hover:scale-105 active:scale-95"
+                  className="h-11 px-6 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 w-full sm:w-auto"
                 >
-                  <UserPlus className="w-4 h-4 mr-2" />
+                  <UserPlus className="w-3.5 h-3.5 mr-2" />
                   GET STARTED
                 </Button>
                 <Button 
                   variant="outline"
                   onClick={() => openAuth('login')}
-                  className="h-14 px-8 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-white hover:bg-white/10 font-bold text-sm transition-all"
+                  className="h-11 px-6 rounded-full border-white/10 bg-white/5 backdrop-blur-md text-white hover:bg-white/10 font-bold text-xs transition-all w-full sm:w-auto"
                 >
-                  <LogIn className="w-4 h-4 mr-2" />
+                  <LogIn className="w-3.5 h-3.5 mr-2" />
                   SIGN IN
                 </Button>
               </div>
             ) : (
               <Button 
                 onClick={() => setSandboxOpen(true)}
-                className="h-14 px-10 rounded-2xl bg-white text-black hover:bg-zinc-200 font-bold text-sm shadow-[0_20px_40px_-15px_rgba(255,255,255,0.2)] transition-all hover:scale-105 active:scale-95"
+                className="h-11 px-8 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 w-full sm:w-auto"
               >
-                <Mic className="w-4 h-4 mr-2 text-indigo-600 animate-pulse" />
+                <Mic className="w-3.5 h-3.5 mr-2 text-indigo-600 animate-pulse" />
                 TRY VOICE AGENT
               </Button>
             )}
             
             <button 
               onClick={() => setModalOpen(true)}
-              className="group flex items-center gap-2 text-zinc-500 hover:text-white transition-colors font-bold text-sm uppercase tracking-widest px-4 h-14"
+              className="group flex items-center justify-center gap-2 text-zinc-500 hover:text-white transition-colors font-bold text-xs uppercase tracking-widest px-4 h-11 w-full sm:w-auto"
             >
               START A CALL
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
 
           {/* Integrated Feature Bar */}
           <div className="w-full max-w-5xl px-4 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-700">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-white/5 border border-white/5 rounded-[2.5rem] overflow-hidden backdrop-blur-sm shadow-2xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-px bg-white/5 border border-white/5 rounded-3xl overflow-hidden backdrop-blur-sm shadow-2xl">
               {featureData.map((f, i) => (
-                <div key={i} className="p-8 bg-zinc-950/40 hover:bg-white/[0.02] transition-colors border-r border-b border-white/5 last:border-r-0">
-                  <div className="mb-4 inline-flex p-3 rounded-2xl bg-white/5 text-white/80 ring-1 ring-white/10">
-                    {React.cloneElement(f.icon as any, { className: 'w-5 h-5' })}
+                <div key={i} className="p-6 sm:p-8 bg-zinc-950/40 hover:bg-white/[0.02] transition-colors border-r border-b border-white/5 last:border-r-0 md:last:border-b-0">
+                  <div className="mb-3 inline-flex p-2.5 rounded-xl bg-white/5 text-white/80 ring-1 ring-white/10">
+                    {React.cloneElement(f.icon as any, { className: 'w-4 h-4' })}
                   </div>
-                  <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">{f.title}</h3>
-                  <p className="text-[11px] text-zinc-500 leading-normal font-medium">{f.desc}</p>
+                  <h3 className="text-xs font-bold text-white mb-1.5 uppercase tracking-wider">{f.title}</h3>
+                  <p className="text-[10px] text-zinc-500 leading-normal font-medium">{f.desc}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Trust Indicators */}
-          <div className="mt-20 flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-30 grayscale hover:opacity-100 transition-opacity duration-500 cursor-default">
+          <div className="mt-16 flex flex-wrap items-center justify-center gap-6 md:gap-10 opacity-30 grayscale hover:opacity-100 transition-opacity duration-500 cursor-default">
             <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-widest">Enterprise Safe</span>
+              <Shield className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-bold uppercase tracking-widest">Enterprise Safe</span>
             </div>
             <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-widest">Low Latency</span>
+              <Zap className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-bold uppercase tracking-widest">Low Latency</span>
             </div>
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-widest">Deep Insights</span>
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-bold uppercase tracking-widest">Deep Insights</span>
             </div>
           </div>
         </div>

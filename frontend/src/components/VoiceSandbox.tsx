@@ -31,9 +31,9 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [customerName, setCustomerName] = useState<string>("Aditya");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
-  const [selectedVoice, setSelectedVoice] = useState<string>("aura-asteria-en");
-  const [ttsProvider, setTtsProvider] = useState<string>("deepgram");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("hi-IN");
+  const [selectedVoice, setSelectedVoice] = useState<string>("anushka");
+  const [ttsProvider, setTtsProvider] = useState<string>("sarvam");
 
   // Sync selected voice list when selectedModuleId changes
   useEffect(() => {
@@ -522,10 +522,10 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       <div className="absolute top-10 left-10 w-56 h-56 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="absolute bottom-10 right-10 w-56 h-56 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-      <div className="w-full max-w-2xl bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative z-10 flex flex-col my-8">
+      <div className="w-full max-w-2xl max-h-[92vh] bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative z-10 flex flex-col my-4">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-blue-500 animate-pulse" />
             <h2 className="text-sm font-bold text-white uppercase tracking-widest">
@@ -542,7 +542,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
         {/* Setup Stage */}
         {stage === 'setup' && (
-          <div className="p-6 sm:p-8 flex flex-col space-y-6">
+          <div className="p-6 sm:p-8 flex flex-col space-y-6 overflow-y-auto">
             <div className="text-center max-w-md mx-auto">
               <h3 className="text-xl font-semibold text-white mb-2">Test Your Voice Pipeline</h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
@@ -604,106 +604,63 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
                       TTS Engine
                     </label>
-                    <div className="relative">
-                      <select
-                        value={ttsProvider}
-                        onChange={(e) => {
-                          const provider = e.target.value;
-                          setTtsProvider(provider);
-                          if (provider === 'deepgram') {
-                            setSelectedLanguage('en-US');
-                            setSelectedVoice('aura-asteria-en');
-                          } else if (provider === 'sarvam') {
-                            setSelectedLanguage('hi-IN');
-                            setSelectedVoice('anushka');
-                          } else {
-                            setSelectedLanguage('en-IN');
-                            setSelectedVoice('NEERJA');
-                          }
-                        }}
-                        className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
-                      >
-                        <option value="deepgram" className="bg-zinc-900 text-white font-semibold">Deepgram Aura (Premium)</option>
-                        <option value="sarvam" className="bg-zinc-900 text-white font-semibold">Sarvam AI (Regional)</option>
-                        <option value="google" className="bg-zinc-900 text-white font-semibold">Google Cloud</option>
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
+                    <div className="h-10 bg-zinc-950/40 border border-white/5 rounded-xl px-4 flex items-center text-zinc-300 text-xs font-semibold select-none">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse"></div>
+                      Sarvam AI (Regional Indian Languages)
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                      Language Override
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedLanguage}
-                        onChange={(e) => setSelectedLanguage(e.target.value)}
-                        className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
-                      >
-                        {ttsProvider === 'sarvam' && SARVAM_LANGUAGES.map((l) => (
-                          <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
-                            {l.label}
-                          </option>
-                        ))}
-                        {ttsProvider === 'deepgram' && DEEPGRAM_LANGUAGES.map((l) => (
-                          <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
-                            {l.label}
-                          </option>
-                        ))}
-                        {ttsProvider === 'google' && GOOGLE_LANGUAGES.map((l) => (
-                          <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
-                            {l.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                        Language Override
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedLanguage}
+                          onChange={(e) => setSelectedLanguage(e.target.value)}
+                          className="w-full h-10 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
+                        >
+                          {SARVAM_LANGUAGES.map((l) => (
+                            <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
+                              {l.label}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                      Voice Override
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedVoice}
-                        onChange={(e) => setSelectedVoice(e.target.value)}
-                        className="w-full h-11 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
-                      >
-                        {ttsProvider === 'sarvam' && (SARVAM_VOICES[selectedLanguage] || []).map((v) => (
-                          <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
-                            {v.label} ({v.gender})
-                          </option>
-                        ))}
-                        {ttsProvider === 'deepgram' && (DEEPGRAM_VOICES[selectedLanguage] || []).map((v) => (
-                          <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
-                            {v.label} ({v.gender})
-                          </option>
-                        ))}
-                        {ttsProvider === 'google' && (GOOGLE_VOICES[selectedLanguage] || []).map((v) => (
-                          <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
-                            {v.label} ({v.gender})
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                        Voice Override
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedVoice}
+                          onChange={(e) => setSelectedVoice(e.target.value)}
+                          className="w-full h-10 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
+                        >
+                          {(SARVAM_VOICES[selectedLanguage] || []).map((v) => (
+                            <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
+                              {v.label} ({v.gender})
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -712,7 +669,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 <Button
                   onClick={handleStartSandbox}
                   disabled={modules.length === 0 || submittingCall}
-                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl tracking-wider text-xs uppercase shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 mt-2"
+                  className="w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-full tracking-wider text-xs uppercase shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 mt-2"
                 >
                   <Play className="w-4 h-4 mr-2" />
                   INITIATE LIVE SANDBOX
@@ -801,17 +758,17 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
               <Button
                 variant="outline"
                 onClick={() => setIsMuted(!isMuted)}
-                className={`h-11 px-4 rounded-xl border-white/10 transition-all ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                className={`h-9 px-4 rounded-full border-white/10 transition-all text-xs font-semibold ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
               >
-                {isMuted ? <MicOff className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
+                {isMuted ? <MicOff className="w-3.5 h-3.5 mr-1.5" /> : <Mic className="w-3.5 h-3.5 mr-1.5" />}
                 {isMuted ? 'Muted' : 'Mute Mic'}
               </Button>
 
               <Button
                 onClick={handleEndSandboxCall}
-                className="h-11 px-6 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl text-xs uppercase tracking-wider transition-all flex items-center gap-2"
+                className="h-9 px-5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-full text-[10px] sm:text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"
               >
-                <Square className="w-4 h-4" />
+                <Square className="w-3.5 h-3.5" />
                 END & ANALYZE SESSION
               </Button>
             </div>
@@ -838,7 +795,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
                       Qualification Result
                     </span>
-                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full inline-block ${
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
                       ['YES', 'INTERESTED', 'QUALIFIED'].includes(analyzedCall.evaluation?.result)
                         ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                         : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -851,7 +808,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
                       Sentiment
                     </span>
-                    <span className="text-xs font-bold text-blue-400">
+                    <span className="text-[10px] font-bold text-blue-400">
                       {analyzedCall.evaluation?.analysis?.sentiment || 'Neutral'}
                     </span>
                   </div>
@@ -860,7 +817,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
                       Duration
                     </span>
-                    <span className="text-xs font-bold text-white">
+                    <span className="text-[10px] font-bold text-white">
                       {analyzedCall.duration || 0}s
                     </span>
                   </div>
@@ -907,14 +864,14 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 <div className="flex gap-3">
                   <Button
                     onClick={() => setStage('setup')}
-                    className="flex-1 h-12 bg-white/5 hover:bg-white/10 text-white font-semibold rounded-xl text-xs uppercase tracking-wider transition-all border border-white/10"
+                    className="flex-1 h-10 bg-white/5 hover:bg-white/10 text-white font-bold rounded-full text-xs uppercase tracking-wider transition-all border border-white/10"
                   >
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Restart Simulation
                   </Button>
                   <Button
                     onClick={onClose}
-                    className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl text-xs uppercase tracking-wider transition-all shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)]"
+                    className="flex-1 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-full text-xs uppercase tracking-wider transition-all shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)]"
                   >
                     Exit Sandbox
                   </Button>
@@ -927,7 +884,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 <span className="text-xs text-zinc-500 text-center leading-relaxed">
                   We encountered a slight delay retrieving the analysis from MongoDB. You can find the full transcript and Gemini qualification inside the Lead Timeline or Analytics tab.
                 </span>
-                <Button onClick={() => setStage('setup')} className="h-10 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl mt-2 text-xs">
+                <Button onClick={() => setStage('setup')} className="h-9 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-full mt-2 text-xs font-semibold">
                   Restart Sandbox
                 </Button>
               </div>
