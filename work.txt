@@ -1,0 +1,10 @@
+1. imporve the design
+    landing page ✅
+    responsiveness ✅
+
+2. google o-auth fix ✅
+
+3. adding emotion to voice, too robotic
+    explore other better tts
+
+4. setup cron-job for render-backend 
