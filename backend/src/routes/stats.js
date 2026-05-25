@@ -9,7 +9,7 @@ router.post('/visitors', async (req, res) => {
         
         let stat = await SiteStat.findById('global_stats');
         if (!stat) {
-            stat = await SiteStat.create({ _id: 'global_stats', visitorCount: 50, visitedClients: [] });
+            stat = await SiteStat.create({ _id: 'global_stats', visitorCount: 101, visitedClients: [] });
         }
 
         if (clientId && !stat.visitedClients.includes(clientId)) {

@@ -179,7 +179,7 @@ const Hero: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-medium tracking-[0.05em] text-zinc-400">
-                    <span className="text-white font-semibold mr-1">{visitorCount || "50+"}</span> Pioneers Testing
+                    <span className="text-white font-semibold mr-1">{visitorCount || "100+"}</span> Total Visitors
                   </span>
                 </div>
               </div>
@@ -627,19 +627,19 @@ const Hero: React.FC = () => {
             </p>
 
             {/* Tab switcher */}
-            <div className="w-full flex bg-white/5 rounded-xl p-1 mb-6 border border-white/5">
+            <div className="w-full flex bg-white/[0.03] rounded-lg p-1 mb-6 border border-white/[0.05]">
               <button
                 onClick={() => { setAuthTab('login'); setAuthError(''); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  authTab === 'login' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  authTab === 'login' ? 'bg-[#1A1A1A] text-white border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 Sign In
               </button>
               <button
                 onClick={() => { setAuthTab('signup'); setAuthError(''); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  authTab === 'signup' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  authTab === 'signup' ? 'bg-[#1A1A1A] text-white border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 Sign Up
@@ -652,13 +652,13 @@ const Hero: React.FC = () => {
                 <input
                   type="text" placeholder="Full name" value={authName}
                   onChange={e => setAuthName(e.target.value)} required disabled={authSubmitting}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-white/30 transition-all disabled:opacity-50 h-10"
                 />
               )}
               <input
                 type="email" placeholder="Email address" value={authEmail}
                 onChange={e => setAuthEmail(e.target.value)} required disabled={authSubmitting}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+                className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-white/30 transition-all disabled:opacity-50 h-10"
               />
               <div className="relative">
                 <input
@@ -666,7 +666,7 @@ const Hero: React.FC = () => {
                   placeholder={authTab === 'signup' ? 'Password (min 6 chars)' : 'Password'}
                   value={authPassword} onChange={e => setAuthPassword(e.target.value)}
                   required disabled={authSubmitting}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40 transition-all disabled:opacity-50"
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 pr-10 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-white/30 transition-all disabled:opacity-50 h-10"
                 />
                 <button type="button" onClick={() => setShowPwd(p => !p)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
@@ -679,7 +679,7 @@ const Hero: React.FC = () => {
                 </p>
               )}
               <Button type="submit" disabled={authSubmitting}
-                className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:scale-100 shadow-[0_8px_24px_-8px_rgba(99,102,241,0.5)]"
+                className="w-full h-10 rounded-lg bg-white text-black hover:bg-zinc-200 text-sm font-medium transition-all disabled:opacity-60 shadow-none mt-2"
               >
                 {authSubmitting ? 'Please wait...' : authTab === 'login' ? 'Sign In' : 'Create Account'}
               </Button>
@@ -694,7 +694,7 @@ const Hero: React.FC = () => {
 
             {/* Google */}
             <button onClick={handleGoogle} disabled={authSubmitting}
-              className="w-full h-11 rounded-xl bg-white text-black text-sm font-bold flex items-center justify-center gap-3 hover:bg-zinc-100 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:scale-100"
+              className="w-full h-10 rounded-lg bg-white/[0.03] border border-white/10 text-white text-sm font-medium flex items-center justify-center gap-2 hover:bg-white/[0.05] transition-all disabled:opacity-60"
             >
               <svg className="w-4 h-4" viewBox="0 0 48 48">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.39 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.09 17.62 9.5 24 9.5z"/>
