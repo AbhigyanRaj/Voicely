@@ -1,41 +1,73 @@
-# Voicely.AI: Professional AI Voice Orchestration and Lead Management
+# Voicely: Open-Source AI Voice Orchestration & Campaign Manager
 
-Voicely.AI is a sophisticated, enterprise-grade platform designed for automated voice interactions and intelligent lead journey tracking. By integrating high-performance LLMs with real-time telephony, Voicely.AI enables businesses to automate customer engagement, qualify leads through AI analysis, and manage lifecycle transitions with precision.
+**Voicely** is a modern, enterprise-grade, **open-source** platform designed for automated Speech-to-Speech (S2S) interactions, intelligent lead tracking, and outbound campaign management. 
+
+By integrating high-performance LLMs (Gemini) with real-time telephony (Twilio) and ultra-low latency TTS (Cartesia/Sarvam), Voicely enables developers and businesses to self-host and automate incredibly natural AI-driven phone calls.
 
 ---
 
-## High-Level Design (HDL)
+#### The Open Source Mission
 
-The Voicely.AI architecture is built on a decoupled micro-service model, ensuring scalability and low-latency processing for real-time voice streams. The system orchestrates interactions between a reactive frontend, a transactional backend, and a suite of third-party AI and communication services.
+Our goal is to make **Voicely** the go-to, community-driven, self-hostable platform for **Speech-to-Speech (S2S)** voice agents. We believe that powerful AI voice orchestration shouldn't be locked behind expensive, proprietary enterprise SaaS platforms. 
 
-### System Architecture Diagram
+- **100% Open Source & Self-Hostable:** No vendor lock-in. No hidden subscription fees. Deploy it on your own AWS, DigitalOcean, or Vercel/Render infrastructure.
+- **BYOK (Bring Your Own Keys):** Connect your own Twilio, Cartesia, and LLM API keys directly in the Settings dashboard. You control your usage and costs.
+- **Community-Driven:** Built by developers, for developers. Easily fork the repo to integrate new open-weight AI models, local LLMs, or alternative TTS providers.
+
+---
+
+## Core Features
+
+- **Autonomous Campaign Manager:** Upload a CSV of contacts (Name, Phone Number) and instantly orchestrate bulk outbound AI calls.
+- **Voice Agent Builder:** Create custom AI personas (Modules) with tailored system prompts, dynamic questions, and specific language/voice selections.
+- **Ultra-Low Latency S2S:** Utilizes WebSockets for real-time bidirectional media streaming, achieving natural, human-like conversation speeds.
+- **Multi-Provider Support:**
+  - **Telephony:** Twilio Voice & Media Streams.
+  - **TTS (Text-to-Speech):** Cartesia (English) & Sarvam AI (Hindi/Regional).
+  - **LLM (The Brain):** Gemini 1.5 Flash (Optimized for speed), Groq, OpenAI.
+- **Analytics Dashboard:** Real-time call logs, duration tracking, success rates, and post-call semantic outcome analysis.
+- **Developer API:** Generate secure API keys from the Developer dashboard and trigger calls programmatically.
+- **Premium Minimal UI:** A beautifully designed, dark-themed, highly responsive dashboard built with React, Vite, and Tailwind CSS.
+
+---
+
+## API Documentation
+
+Want to integrate Voicely into your own CRM or application? We provide a comprehensive REST API to manage agents, initiate calls, and fetch analytics programmatically.
+
+**[Read the Full API Documentation here](./API.md)**
+
+---
+
+## Architecture & High-Level Design (HLD)
+
+Voicely uses a robust **Monolith** architecture (Node.js/Express backend + React frontend). We specifically chose a monolith approach to make it incredibly easy for the open-source community to deploy, understand, and contribute to, without the headache of managing multiple microservices. 
+
+Despite being a monolith, it scales horizontally perfectly behind a load balancer since the REST API is completely stateless, and WebSocket connections can be load-balanced easily.
+
+### Component Interaction Diagram
 
 ```mermaid
 graph TD
     subgraph Client_Layer [Client Layer - React & Vite]
-        FE[Reactive Frontend]
-        DASH[Analytics Dashboard]
-        WS_FE[Live Call WebSocket]
+        FE[Reactive Frontend Dashboard]
+        API_KEYS[Developer Settings]
     end
 
-    subgraph Orchestration_Layer [Orchestration Layer - Node.js/Express]
-        API[API Gateway]
-        MEDIA_WS[Media Stream WebSocket Hub]
+    subgraph Orchestration_Layer [Backend - Node.js/Express]
+        API[REST API Gateway]
+        MEDIA_WS[Twilio Media Stream WebSocket]
         LIVE_WS[Live Call Sync Server]
-        BOT[Telegram Bot Service]
-        SCHED[Intelligent Call Scheduler]
     end
 
     subgraph AI_Brain_Layer [AI Processing Layer]
-        STT[Deepgram STT - Nova 3]
-        GEMINI[Gemini Flash Lite - LLM Brain]
-        TTS[Google/Sarvam TTS Engine]
+        GEMINI[Gemini 1.5 Flash - LLM Brain]
+        TTS[Cartesia / Sarvam TTS Engine]
         ANALYTICS[Post-Call Analysis Engine]
     end
 
-    subgraph Data_Layer [Persistence & Cache]
+    subgraph Data_Layer [Persistence]
         DB[(MongoDB Atlas)]
-        CACHE[Shared Audio Library]
     end
 
     subgraph Telephony_Layer [External Telephony]
@@ -45,127 +77,97 @@ graph TD
 
     %% Flow Connections
     FE <--> API
-    FE <--> LIVE_WS
     API <--> DB
     API <--> TW
     
     TW <--> STREAM
     STREAM <--> MEDIA_WS
     
-    MEDIA_WS <--> STT
     MEDIA_WS <--> GEMINI
     MEDIA_WS <--> TTS
     
-    LIVE_WS <--> MEDIA_WS
-    ANALYTICS <--> GEMINI
     ANALYTICS <--> DB
-    
-    BOT <--> API
-    SCHED <--> API
 ```
-
-### Core Components
-
-#### 1. API Orchestration Layer
-The backend, built on Node.js and Express, serves as the central nervous system. It handles authentication, lead management, workspace isolation, and call routing. It enforces strict environment validation and manages the initialization of all dependent services.
-
-#### 2. Real-Time Media Streaming
-Utilizing WebSockets, the system establishes bidirectional media streams with Twilio. This allows for near-instantaneous transcription and response generation, enabling natural-sounding conversations between the AI agent and the customer.
-
-#### 3. AI Evaluation Engine
-Voicely.AI leverages the Groq LLM engine to perform deep analysis of call transcripts. Post-call, the engine evaluates customer intent, extracts key information, and assigns semantic labels (e.g., "Warm Lead", "Positive Interest") to the lead's journey.
-
-#### 4. Lead Journey Tracking
-A proprietary tracking system that models the lifecycle of a lead through a strict, 4-stage progression:
-- **Initiated**: The trigger event for engagement.
-- **Picked Up**: Verification of successful connection.
-- **Outcome (Semantic Label)**: AI-driven qualification results.
-- **Completed**: Final state of the interaction including duration and summary.
 
 ---
 
 ## Technical Stack
 
-- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, Mermaid.js (for visualization).
-- **Backend**: Node.js, Express, WebSocket (ws), Mongoose.
-- **Database**: MongoDB (Atlas/Local).
-- **Voice Stack**: Twilio Voice, Media Streams.
-- **AI Core**: Groq SDK (Llama 3/70B models), Google Cloud TTS, ElevenLabs.
-- **Messaging**: Telegram Bot API.
+- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Lucide Icons.
+- **Backend:** Node.js, Express, WebSockets (`ws`), Mongoose.
+- **Database:** MongoDB (Atlas or Local).
+- **Voice & Telephony:** Twilio Voice API, Twilio Media Streams.
 
 ---
 
-## Core Features
-
-- **Autonomous Call Orchestration**: Programmatic initiation and management of outbound/inbound calls via Twilio.
-- **Intelligent Transcription**: Real-time conversion of audio streams to text for instant processing.
-- **Semantic Lead Analysis**: Post-call evaluation that transforms raw data into actionable business intelligence.
-- **Telegram Command Center**: A fully integrated bot that provides status updates and allows for remote call management.
-- **Strict Lifecycle Journey**: A high-reliability visualization tool for tracking lead progress across multiple touchpoints.
-- **Shared Audio Library**: Cached TTS assets to reduce latency and API consumption.
-
----
-
-## Installation and Setup
+## Installation & Self-Hosting
 
 ### Prerequisites
-- Node.js (version 18.x or higher)
-- MongoDB (running instance)
-- Twilio Account (with a verified number)
-- Groq API Key
-- Telegram Bot Token
+- Node.js (v18+)
+- MongoDB instance (Atlas recommended)
+- Twilio Account (with a verified phone number)
+- Gemini API Key (for LLM)
+- Cartesia API Key (for Text-to-Speech)
 
-### Environment Configuration
-Create a `.env` file in the `backend` directory with the following parameters:
-
+### 1. Clone the Repository
 ```bash
-# Server Configuration
-PORT=5001
-NODE_ENV=development
-JWT_SECRET=your_secret_key
-
-# Database
-MONGODB_URI=your_mongodb_connection_string
-
-# Twilio
-TWILIO_ACCOUNT_SID=your_sid
-TWILIO_AUTH_TOKEN=your_token
-TWILIO_PHONE_NUMBER=your_number
-
-# AI Services
-GROQ_API_KEY=your_groq_key
-GOOGLE_APPLICATION_CREDENTIALS=path_to_json (Optional)
-ELEVENLABS_API_KEY=your_key (Optional)
-
-# Telegram
-TELEGRAM_BOT_TOKEN=your_bot_token
+git clone https://github.com/YourUsername/Voicely.git
+cd Voicely
 ```
 
-### Deployment Steps
+### 2. Backend Setup
+Create a `.env` file in the `backend` directory:
+```bash
+PORT=5001
+NODE_ENV=development
+JWT_SECRET=your_super_secret_jwt_key
+MONGODB_URI=your_mongodb_connection_string
+```
+*(Note: Provider API keys like Twilio and Cartesia are configured securely inside the Voicely UI via the Settings tab, stored encrypted in your database!)*
 
-1. **Clone the Repository**
-2. **Backend Setup**:
-   ```bash
-   cd backend
-   npm install
-   npm run dev
-   ```
-3. **Frontend Setup**:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-4. **Tunneling (Required for Twilio Webhooks)**:
-   ```bash
-   ngrok http 5001
-   ```
-   Update the Twilio console and project environment with the ngrok URL.
+Install dependencies and run:
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+### 3. Frontend Setup
+Create a `.env` file in the `frontend` directory:
+```bash
+VITE_API_URL=http://localhost:5001/api
+```
+
+Install dependencies and run:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 4. Twilio Tunneling (Local Development)
+To receive live calls locally, you must expose your local WebSocket server to the internet using a tool like `ngrok`:
+```bash
+ngrok http 5001
+```
+Then, update your Twilio Webhook URL in the Twilio Console to point to your ngrok address (e.g., `https://your-ngrok-url.ngrok.io/api/calls/twiml`).
 
 ---
 
-## Strategic High-Level Design (HDL) Philosophy
+## Contributing
 
-Voicely.AI is designed with a "Fail-Fast and Notify" philosophy. All critical stages of the call lifecycle are monitored for failure (e.g., Busy, No Answer). When a failure occurs, the system preserves the state, updates the Lead Journey with a failure status (represented visually in yellow), and triggers an immediate notification via the Telegram Command Center. This ensures that no lead is lost due to technical or connection issues.
+We welcome contributions from the community! Whether it's fixing bugs, improving the UI, or adding new LLM/TTS adapters.
 
-The data model enforces strict relational integrity between Workspace, Lead, and Call entities, allowing for complex multi-tenant operations while maintaining absolute data isolation.
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature/your-feature-name`).
+3. Commit your changes (`git commit -m 'Add awesome feature'`).
+4. Push to the branch (`git push origin feature/your-feature-name`).
+5. Open a Pull Request.
+
+Please check the **Issues** tab for beginner-friendly tasks!
+
+---
+
+## License
+
+This project is open-source and licensed under the **MIT License**. You are completely free to use, self-host, modify, and distribute this software for personal and commercial use without fees. 

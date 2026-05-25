@@ -222,113 +222,117 @@ const SettingsPage: React.FC = () => {
   };
 
   const renderGeneralTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-500/20 rounded-2xl">
-              <LayoutGrid className="w-6 h-6 text-blue-400" />
+    <div className="space-y-4">
+      <Card className="bg-[#09090b] border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/20 rounded-xl">
+              <LayoutGrid className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white">Active Workspace</h3>
-              <p className="text-zinc-400 text-sm">Managing your current operational environment</p>
+              <h3 className="text-sm font-bold text-white">Active Workspace</h3>
+              <p className="text-zinc-400 text-xs">Managing your current operational environment</p>
             </div>
           </div>
-          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 px-4 py-1 rounded-full">Active</Badge>
+          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 px-3 py-0.5 text-[10px] rounded-full">Active</Badge>
         </div>
         
-        <div className="p-6 bg-zinc-800/20 border border-white/5 rounded-2xl flex items-center justify-between mb-6">
+        <div className="p-4 bg-zinc-800/20 border border-white/5 rounded-xl flex items-center justify-between mb-5">
           <div>
-            <div className="text-white font-bold text-lg">{user?.currentWorkspace?.name || 'Loading...'}</div>
-            <div className="text-xs text-zinc-500 uppercase tracking-widest mt-1 font-bold">
+            <div className="text-white font-semibold text-sm">{user?.currentWorkspace?.name || 'Loading...'}</div>
+            <div className="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5 font-bold">
               {user?.currentWorkspace?.category?.replace('_', ' ') || 'General'}
             </div>
           </div>
           <Button 
             onClick={() => setIsCreatingWorkspace(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 px-4 flex items-center gap-2"
+            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-8 px-3 text-xs flex items-center gap-1.5"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">New Workspace</span>
           </Button>
         </div>
 
-        <div className="space-y-3">
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] px-2 mb-2">Switch Workspace</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] px-1 mb-1.5">Switch Workspace</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {workspaces.filter(ws => ws._id !== user?.currentWorkspace?._id).map((ws) => (
               <button
                 key={ws._id}
                 onClick={() => handleSwitchWorkspace(ws._id)}
-                className="p-4 bg-zinc-800/10 border border-zinc-800 hover:border-zinc-700 rounded-2xl flex items-center justify-between group transition-all"
+                className="p-3 bg-zinc-800/10 border border-zinc-800 hover:border-zinc-700 rounded-xl flex items-center justify-between group transition-all"
               >
                 <div className="text-left">
-                  <div className="text-zinc-300 font-bold text-sm group-hover:text-white transition-colors">{ws.name}</div>
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">{ws.category.replace('_', ' ')}</div>
+                  <div className="text-zinc-300 font-medium text-xs group-hover:text-white transition-colors">{ws.name}</div>
+                  <div className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">{ws.category.replace('_', ' ')}</div>
                 </div>
-                <RefreshCw className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 group-hover:rotate-180 transition-all duration-500" />
+                <RefreshCw className="w-3.5 h-3.5 text-zinc-600 group-hover:text-blue-400 group-hover:rotate-180 transition-all duration-500" />
               </button>
             ))}
           </div>
         </div>
       </Card>
 
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 bg-emerald-500/20 rounded-2xl">
-            <User className="w-6 h-6 text-emerald-400" />
+      <Card className="bg-[#09090b] border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-emerald-500/20 rounded-xl">
+            <User className="w-5 h-5 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Profile</h3>
-            <p className="text-zinc-400 text-sm">Personal account details</p>
+            <h3 className="text-sm font-bold text-white">Profile</h3>
+            <p className="text-zinc-400 text-xs">Personal account details</p>
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Full Name</label>
-            <div className="p-4 bg-zinc-800/20 border border-white/5 rounded-2xl text-zinc-200 font-medium">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Full Name</label>
+            <div className="p-3 bg-zinc-800/20 border border-white/5 rounded-xl text-zinc-200 text-xs font-medium">
               {user?.name || 'Voicely User'}
             </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Email Address</label>
-            <div className="p-4 bg-zinc-800/20 border border-white/5 rounded-2xl text-zinc-200 font-medium">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Email Address</label>
+            <div className="p-3 bg-zinc-800/20 border border-white/5 rounded-xl text-zinc-200 text-xs font-medium">
               {user?.email || 'user@voicely.ai'}
             </div>
           </div>
         </div>
       </Card>
 
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl border-dashed opacity-75">
+      <Card className="bg-[#09090b] border border-white/[0.05] border-dashed p-6 rounded-2xl relative overflow-hidden opacity-75">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.01] rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-rose-500/20 rounded-2xl">
-              <Key className="w-6 h-6 text-rose-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-500/20 rounded-xl">
+              <Key className="w-5 h-5 text-rose-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-zinc-200">Security & 2FA</h3>
-              <p className="text-zinc-500 text-sm italic">Enhanced account protection coming soon</p>
+              <h3 className="text-sm font-bold text-zinc-200">Security & 2FA</h3>
+              <p className="text-zinc-500 text-xs italic">Enhanced account protection coming soon</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-zinc-500 border-zinc-800">Soon</Badge>
+          <Badge variant="outline" className="text-zinc-500 border-zinc-800 text-[10px] px-2 py-0">Soon</Badge>
         </div>
       </Card>
 
-      <Card className="bg-rose-500/5 border-rose-500/10 p-8 rounded-3xl">
+      <Card className="bg-[#09090b] border border-rose-500/20 p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-rose-500/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-rose-500/20 rounded-2xl">
-              <LogOut className="w-6 h-6 text-rose-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-500/20 rounded-xl">
+              <LogOut className="w-5 h-5 text-rose-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white">Account Session</h3>
-              <p className="text-zinc-500 text-sm">Sign out of all devices</p>
+              <h3 className="text-sm font-bold text-white">Account Session</h3>
+              <p className="text-zinc-500 text-xs">Sign out of all devices</p>
             </div>
           </div>
           <Button 
             onClick={handleSignOut}
-            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-2xl px-8"
+            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg px-5 h-8 text-xs font-medium"
           >
             Sign Out
           </Button>
@@ -338,28 +342,29 @@ const SettingsPage: React.FC = () => {
   );
 
   const renderAIVoiceTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 bg-pink-500/20 rounded-2xl">
-            <Volume2 className="w-6 h-6 text-pink-400" />
+    <div className="space-y-4">
+      <Card className="bg-[#09090b] border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-pink-500/20 rounded-xl">
+            <Volume2 className="w-5 h-5 text-pink-400" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Default AI Voice</h3>
-            <p className="text-zinc-400 text-sm">Preferred synthesis settings for all agents</p>
+            <h3 className="text-sm font-bold text-white">Default AI Voice</h3>
+            <p className="text-zinc-400 text-xs">Preferred synthesis settings for all agents</p>
           </div>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-6">
           <div>
-            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 block">Global Voice Preference</label>
+            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Global Voice Preference</label>
             <select
               value={settings.voice.defaultVoice}
               onChange={(e) => setSettings(prev => ({
                 ...prev,
                 voice: { ...prev.voice, defaultVoice: e.target.value }
               }))}
-              className="w-full bg-zinc-950 border border-zinc-800 px-6 py-4 rounded-2xl text-white focus:outline-none focus:border-pink-500 transition-all font-medium appearance-none"
+              className="w-full bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl text-white focus:outline-none focus:border-pink-500 transition-all font-medium text-xs appearance-none"
             >
               <option value="en-US-Neural2-F">Emma (Standard Female)</option>
               <option value="en-US-Neural2-M">John (Professional Male)</option>
@@ -368,10 +373,10 @@ const SettingsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Speech Rate</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Speech Rate</label>
                 <span className="text-pink-400 font-mono text-xs">{settings.voice.speechRate}x</span>
               </div>
               <input
@@ -384,135 +389,137 @@ const SettingsPage: React.FC = () => {
                   ...prev,
                   voice: { ...prev.voice, speechRate: parseFloat(e.target.value) }
                 }))}
-                className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Pitch Modulation</label>
-                <Badge variant="outline" className="text-[8px] border-zinc-800 text-zinc-600">Locked</Badge>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Pitch Modulation</label>
+                <Badge variant="outline" className="text-[8px] border-zinc-800 text-zinc-600 px-1.5 py-0">Locked</Badge>
               </div>
-              <div className="w-full h-1.5 bg-zinc-800/50 rounded-lg opacity-30" />
+              <div className="w-full h-1 bg-zinc-800/50 rounded-lg opacity-30" />
             </div>
           </div>
         </div>
       </Card>
 
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl border-dashed opacity-75">
+      <Card className="bg-[#09090b] border border-white/[0.05] border-dashed p-6 rounded-2xl relative overflow-hidden opacity-75">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.01] rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-purple-500/20 rounded-2xl">
-              <Activity className="w-6 h-6 text-purple-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-purple-500/20 rounded-xl">
+              <Activity className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-zinc-200">Emotional Tone Sync</h3>
-              <p className="text-zinc-500 text-sm italic">AI adjusts voice emotion based on customer sentiment</p>
+              <h3 className="text-sm font-bold text-zinc-200">Emotional Tone Sync</h3>
+              <p className="text-zinc-500 text-xs italic">AI adjusts voice emotion based on customer sentiment</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-purple-500/50 border-purple-500/20 bg-purple-500/5">Beta</Badge>
+          <Badge variant="outline" className="text-purple-500/50 border-purple-500/20 bg-purple-500/5 text-[10px] px-2 py-0">Beta</Badge>
         </div>
       </Card>
     </div>
   );
 
   const renderProvidersTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 bg-blue-500/20 rounded-2xl">
-            <Phone className="w-6 h-6 text-blue-400" />
+    <div className="space-y-4">
+      <Card className="bg-[#09090b] border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 bg-blue-500/20 rounded-xl">
+            <Phone className="w-5 h-5 text-blue-400" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Call Providers</h3>
-            <p className="text-zinc-400 text-sm">Configure your Twilio or Exotel accounts</p>
+            <h3 className="text-sm font-bold text-white">Call Providers</h3>
+            <p className="text-zinc-400 text-xs">Configure your Twilio or Exotel accounts</p>
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Twilio */}
-          <div className="p-6 bg-zinc-800/20 border border-white/5 rounded-2xl">
-            <h4 className="text-zinc-200 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span> Twilio
+          <div className="p-4 bg-zinc-800/20 border border-white/5 rounded-xl">
+            <h4 className="text-zinc-200 text-xs font-bold uppercase mb-3 tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Twilio
             </h4>
             
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Account SID</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 block">Account SID</label>
                 <input
                   type="text"
                   value={twilioForm.accountSid}
                   onChange={e => setTwilioForm(prev => ({...prev, accountSid: e.target.value}))}
                   placeholder="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-3 py-2 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-all text-xs"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Auth Token</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 block">Auth Token</label>
                 <input
                   type="password"
                   value={twilioForm.authToken}
                   onChange={e => setTwilioForm(prev => ({...prev, authToken: e.target.value}))}
                   placeholder="Enter Auth Token"
-                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-3 py-2 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-all text-xs"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Twilio Phone Number</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 block">Twilio Phone Number</label>
                 <input
                   type="text"
                   value={twilioForm.phoneNumber}
                   onChange={e => setTwilioForm(prev => ({...prev, phoneNumber: e.target.value}))}
                   placeholder="+1234567890"
-                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-3 py-2 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-all text-xs"
                 />
               </div>
             </div>
           </div>
 
           {/* Plivo (Coming Soon) */}
-          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
-            <div className="absolute top-4 right-4">
-              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+          <div className="p-4 bg-zinc-800/10 border border-white/5 rounded-xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50 text-[9px] px-1.5 py-0">Coming Soon</Badge>
             </div>
-            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 opacity-50"></span> Plivo
+            <h4 className="text-zinc-400 text-xs font-bold uppercase mb-3 tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 opacity-50"></span> Plivo
             </h4>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">Auth ID</label>
-                <input disabled type="text" placeholder="MAYxxxxxxxxxxxxxxxxxx" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+                <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1.5 block">Auth ID</label>
+                <input disabled type="text" placeholder="MAYxxxxxxxxxxxxxxxxxx" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-3 py-2 rounded-lg text-zinc-600 text-xs" />
               </div>
             </div>
           </div>
 
           {/* Exotel (Coming Soon) */}
-          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
-            <div className="absolute top-4 right-4">
-              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+          <div className="p-4 bg-zinc-800/10 border border-white/5 rounded-xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50 text-[9px] px-1.5 py-0">Coming Soon</Badge>
             </div>
-            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-orange-500 opacity-50"></span> Exotel
+            <h4 className="text-zinc-400 text-xs font-bold uppercase mb-3 tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 opacity-50"></span> Exotel
             </h4>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">API Key</label>
-                <input disabled type="text" placeholder="Enter Exotel API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+                <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1.5 block">API Key</label>
+                <input disabled type="text" placeholder="Enter Exotel API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-3 py-2 rounded-lg text-zinc-600 text-xs" />
               </div>
             </div>
           </div>
 
           {/* Vonage (Coming Soon) */}
-          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
-            <div className="absolute top-4 right-4">
-              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+          <div className="p-4 bg-zinc-800/10 border border-white/5 rounded-xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50 text-[9px] px-1.5 py-0">Coming Soon</Badge>
             </div>
-            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-500 opacity-50"></span> Vonage
+            <h4 className="text-zinc-400 text-xs font-bold uppercase mb-3 tracking-widest flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 opacity-50"></span> Vonage
             </h4>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">API Key</label>
-                <input disabled type="text" placeholder="Enter Vonage API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+                <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1.5 block">API Key</label>
+                <input disabled type="text" placeholder="Enter Vonage API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-3 py-2 rounded-lg text-zinc-600 text-xs" />
               </div>
             </div>
           </div>
@@ -523,24 +530,25 @@ const SettingsPage: React.FC = () => {
   );
 
   const renderIntegrationsTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-500/20 rounded-2xl">
-              <Send className="w-6 h-6 text-blue-400" />
+    <div className="space-y-4">
+      <Card className="bg-[#09090b] border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.02] rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/20 rounded-xl">
+              <Send className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white">Telegram Remote</h3>
-              <p className="text-zinc-400 text-sm">Control agents via @VoicelyBot</p>
+              <h3 className="text-sm font-bold text-white">Telegram Remote</h3>
+              <p className="text-zinc-400 text-xs">Control agents via @VoicelyBot</p>
             </div>
           </div>
           {user?.telegram?.chatId ? (
-            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 px-4 rounded-full">Connected</Badge>
+            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 px-3 py-0.5 text-[10px] rounded-full">Connected</Badge>
           ) : (
             <Button 
                 onClick={handleGenerateTelegramCode}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-lg shadow-blue-600/20"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm h-8 px-3 text-xs"
             >
                 Connect Bot
             </Button>
@@ -548,54 +556,56 @@ const SettingsPage: React.FC = () => {
         </div>
 
         {telegramCode && (
-          <div className="mb-8 p-6 bg-blue-500/5 border border-blue-500/20 rounded-2xl text-center animate-in zoom-in-95">
-            <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold mb-3">Your Linking Code</p>
-            <div className="text-5xl font-mono text-blue-400 font-bold mb-2 tracking-tighter">
+          <div className="mb-6 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl text-center animate-in zoom-in-95">
+            <p className="text-zinc-400 text-[10px] uppercase tracking-widest font-bold mb-2">Your Linking Code</p>
+            <div className="text-3xl font-mono text-blue-400 font-bold mb-1 tracking-tighter">
               {telegramCode}
             </div>
-            <p className="text-zinc-500 text-xs">Expires in 10 minutes. Send to bot now.</p>
+            <p className="text-zinc-500 text-[10px]">Expires in 10 minutes. Send to bot now.</p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-            <div className="p-4 bg-zinc-800/20 rounded-2xl border border-white/5">
-                <h4 className="text-zinc-200 text-xs font-bold uppercase mb-1">Status Notifications</h4>
-                <p className="text-zinc-500 text-[10px]">Get call alerts directly on phone</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            <div className="p-3 bg-zinc-800/20 rounded-xl border border-white/5">
+                <h4 className="text-zinc-200 text-[10px] font-bold uppercase mb-1">Status Notifications</h4>
+                <p className="text-zinc-500 text-[9px]">Get call alerts directly on phone</p>
             </div>
-            <div className="p-4 bg-zinc-800/20 rounded-2xl border border-white/5">
-                <h4 className="text-zinc-200 text-xs font-bold uppercase mb-1">Remote Triggers</h4>
-                <p className="text-zinc-500 text-[10px]">Start individual/bulk calls via chat</p>
+            <div className="p-3 bg-zinc-800/20 rounded-xl border border-white/5">
+                <h4 className="text-zinc-200 text-[10px] font-bold uppercase mb-1">Remote Triggers</h4>
+                <p className="text-zinc-500 text-[9px]">Start individual/bulk calls via chat</p>
             </div>
         </div>
       </Card>
 
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl border-dashed opacity-50">
+      <Card className="bg-[#09090b] border border-white/[0.05] border-dashed p-6 rounded-2xl relative overflow-hidden opacity-50">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.01] rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-500/20 rounded-2xl">
-              <ShieldCheck className="w-6 h-6 text-emerald-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-500/20 rounded-xl">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-zinc-300">WhatsApp Automation</h3>
-              <p className="text-zinc-500 text-sm italic">Send post-call summaries via WhatsApp</p>
+              <h3 className="text-sm font-bold text-zinc-300">WhatsApp Automation</h3>
+              <p className="text-zinc-500 text-xs italic">Send post-call summaries via WhatsApp</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-zinc-600 border-zinc-800">Soon</Badge>
+          <Badge variant="outline" className="text-zinc-600 border-zinc-800 text-[10px] px-2 py-0">Soon</Badge>
         </div>
       </Card>
 
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl border-dashed opacity-50">
+      <Card className="bg-[#09090b] border border-white/[0.05] border-dashed p-6 rounded-2xl relative overflow-hidden opacity-50">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/[0.01] rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-amber-500/20 rounded-2xl">
-              <Key className="w-6 h-6 text-amber-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500/20 rounded-xl">
+              <Key className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-zinc-300">API Access</h3>
-              <p className="text-zinc-500 text-sm italic">Generate API keys for custom integrations</p>
+              <h3 className="text-sm font-bold text-zinc-300">API Access</h3>
+              <p className="text-zinc-500 text-xs italic">Generate API keys for custom integrations</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-zinc-600 border-zinc-800">Soon</Badge>
+          <Badge variant="outline" className="text-zinc-600 border-zinc-800 text-[10px] px-2 py-0">Soon</Badge>
         </div>
       </Card>
     </div>
@@ -612,83 +622,87 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10 pt-20 sm:pt-24">
-      <div className="w-full max-w-7xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12">
+      {/* Rich Background Elements */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+      
+      <div className="w-full max-w-6xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-8 sm:mb-10">
-          <div className="flex items-center mb-4 mt-10">
-            <div className="p-2 bg-blue-500/20 rounded-lg mr-4">
-              <Settings className="w-6 h-6 text-blue-400" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-zinc-100 mb-1">Settings</h1>
-              <p className="text-zinc-400 text-sm sm:text-base">Manage your account, preferences, and security settings</p>
-            </div>
+        <div className="mb-8 sm:mb-10 text-left">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
+            <Settings className="w-3 h-3 text-blue-400" />
+            <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Configuration</span>
           </div>
+          <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Settings<span className="text-zinc-500">.</span></h1>
+          <p className="text-zinc-400 text-xs leading-relaxed">
+            Manage your account, preferences, and workspace configuration.
+          </p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Sidebar */}
-          <div className="lg:w-72 flex-shrink-0">
-            <Card className="bg-zinc-900/50 border-zinc-800 p-4">
+          <div className="lg:w-64 flex-shrink-0 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="bg-[#09090b] border border-white/[0.08] p-5 rounded-2xl shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
               <div className="mb-4">
-                <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Settings</h3>
+                <h3 className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Menu</h3>
               </div>
-              <nav className="space-y-1">
+              <nav className="space-y-1 relative z-10">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeTab === tab.id
-                        ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/10'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border border-transparent'
+                      className={`w-full flex items-center px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${activeTab === tab.id
+                        ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 border border-transparent'
                         }`}
                     >
-                      <Icon className={`w-4 h-4 mr-3 transition-colors ${activeTab === tab.id ? 'text-blue-400' : 'text-zinc-500'
+                      <Icon className={`w-3.5 h-3.5 mr-2.5 transition-colors ${activeTab === tab.id ? 'text-blue-400' : 'text-zinc-500'
                         }`} />
                       {tab.label}
                     </button>
                   );
                 })}
               </nav>
-            </Card>
+            </div>
           </div>
 
           {/* Main Content */}
-          <div className="flex-1">
-            <div className="animate-in slide-in-from-left-2 duration-300">
+          <div className="flex-1 w-full animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
+            <div className="space-y-4">
             {renderTabContent()}
             
             {isCreatingWorkspace && (
               <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-                <Card className="w-full max-w-md bg-zinc-900/90 backdrop-blur-2xl border-zinc-800 p-8 rounded-[2.5rem] shadow-2xl animate-in zoom-in-95 duration-300">
-                  <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-2xl font-bold text-white">New Workspace</h3>
+                <Card className="w-full max-w-sm bg-zinc-900 border-zinc-800 p-6 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold text-white">New Workspace</h3>
                     <button 
                       onClick={() => setIsCreatingWorkspace(false)}
-                      className="p-2 hover:bg-white/5 rounded-full text-zinc-400 transition-colors"
+                      className="p-1.5 hover:bg-white/5 rounded-full text-zinc-400 transition-colors"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                   
-                  <div className="space-y-6">
+                  <div className="space-y-5">
                     <div>
-                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Workspace Name</label>
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Workspace Name</label>
                       <input
                         type="text"
                         value={newWorkspaceName}
                         onChange={(e) => setNewWorkspaceName(e.target.value)}
                         placeholder="e.g. Real Estate CRM"
-                        className="w-full bg-zinc-950 border border-zinc-800 px-6 py-4 rounded-2xl text-white placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all font-medium"
+                        className="w-full bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl text-white placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all text-xs font-medium"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Category</label>
-                      <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Category</label>
+                      <div className="grid grid-cols-2 gap-2">
                         {[
                           { id: 'real_estate', label: 'Real Estate' },
                           { id: 'medical', label: 'Clinic' },
@@ -698,9 +712,9 @@ const SettingsPage: React.FC = () => {
                           <button
                             key={cat.id}
                             onClick={() => setNewWorkspaceCategory(cat.id as any)}
-                            className={`p-4 rounded-2xl border text-sm font-bold transition-all ${
+                            className={`p-2.5 rounded-xl border text-xs font-medium transition-all ${
                               newWorkspaceCategory === cat.id 
-                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20' 
+                                ? 'bg-blue-600 border-blue-500 text-white shadow-sm' 
                                 : 'bg-zinc-800/50 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                             }`}
                           >
@@ -713,9 +727,9 @@ const SettingsPage: React.FC = () => {
                     <Button 
                       onClick={handleCreateWorkspace}
                       disabled={loading || !newWorkspaceName}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-2xl text-lg font-bold mt-4 shadow-lg shadow-blue-600/20"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-semibold mt-2 shadow-sm"
                     >
-                      {loading ? <RefreshCw className="w-6 h-6 animate-spin" /> : "Create Workspace"}
+                      {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Create Workspace"}
                     </Button>
                   </div>
                 </Card>
@@ -728,12 +742,12 @@ const SettingsPage: React.FC = () => {
               <Button
                 onClick={handleSaveSettings}
                 disabled={loading}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-zinc-100 font-medium rounded-lg shadow-lg shadow-blue-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-blue-500/30"
+                className="h-11 px-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 text-sm"
               >
                 {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-100 mr-2"></div>
-                    Saving Changes...
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
                   </>
                 ) : (
                   <>

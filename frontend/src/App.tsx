@@ -7,6 +7,7 @@ import DeveloperPage from './components/DeveloperPage';
 import ApiDocsPage from './components/ApiDocsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from "./components/Navbar";
+import CampaignPage from "./components/CampaignPage";
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './contexts/AuthContext';
 
@@ -24,6 +25,11 @@ function App() {
           <Route path="/modules" element={
             <ProtectedRoute>
               <ModulesPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/campaign" element={
+            <ProtectedRoute>
+              <CampaignPage />
             </ProtectedRoute>
           } />
           <Route path="/analytics" element={

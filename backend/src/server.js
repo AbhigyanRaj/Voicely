@@ -183,8 +183,8 @@ const startServer = async () => {
     initScheduler();
 
     // Start the server
-    httpServer.listen(PORT, () => {
-      logger.success(`SERVER RUNNING ON PORT ${PORT}`);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      logger.success(`SERVER RUNNING ON PORT ${PORT} (0.0.0.0)`);
       logger.info(`Health Check: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {

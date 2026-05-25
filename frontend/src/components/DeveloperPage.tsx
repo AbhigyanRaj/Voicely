@@ -50,7 +50,7 @@ const ModelSelect: React.FC<ModelSelectProps> = ({ label, options, value, onChan
       <label className="text-xs font-medium text-zinc-400 mb-2 block px-1">{label}</label>
       <div 
         onClick={() => setOpen(!open)}
-        className={`w-full bg-[#0A0A0A] border ${open ? 'border-zinc-600' : 'border-zinc-800'} rounded-lg p-3 cursor-pointer hover:border-zinc-700 transition-colors flex items-center justify-between group`}
+        className={`w-full bg-[#09090b] border ${open ? 'border-white/[0.15]' : 'border-white/[0.08]'} rounded-xl p-2.5 cursor-pointer hover:border-white/[0.12] transition-colors flex items-center justify-between group`}
       >
         {selectedModel ? (
           <div className="flex items-center gap-3">
@@ -66,7 +66,7 @@ const ModelSelect: React.FC<ModelSelectProps> = ({ label, options, value, onChan
       </div>
 
       {open && (
-        <div className="absolute z-50 w-full mt-1 bg-[#0A0A0A] border border-zinc-800 rounded-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute z-50 w-full mt-1 bg-[#09090b] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           <div className="max-h-64 overflow-y-auto p-1 custom-scrollbar">
             {options.map((option) => {
               const disabled = option.isComingSoon;
@@ -189,7 +189,7 @@ const DeveloperPage: React.FC = () => {
 
   if (loading || !options) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
       </div>
     );
@@ -227,8 +227,11 @@ ws.on('message', (data) => {
 });` : '';
 
   return (
-    <div className="min-h-screen bg-black px-6 md:px-12 py-12 pt-28 font-sans text-zinc-200 selection:bg-zinc-800">
-      
+    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12 font-sans text-zinc-200 selection:bg-zinc-800">
+      {/* Rich Background Elements */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -236,19 +239,25 @@ ws.on('message', (data) => {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       `}</style>
 
-      <div className="max-w-5xl mx-auto space-y-12">
+      <div className="w-full max-w-6xl mx-auto relative z-10 space-y-8">
         
         {/* Header */}
-        <div className="border-b border-zinc-900 pb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-medium text-white mb-2">API Configuration</h1>
-            <p className="text-sm text-zinc-500">Configure your voice pipeline and manage API keys for external integrations.</p>
+        <div className="mb-8 sm:mb-10 flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="text-left">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
+              <BookOpen className="w-3 h-3 text-blue-400" />
+              <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Developers</span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">API Configuration<span className="text-zinc-500">.</span></h1>
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              Configure your voice pipeline and manage API keys for external integrations.
+            </p>
           </div>
           <Link 
             to="/developer/docs" 
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-lg text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-medium transition-colors"
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-3.5 h-3.5" />
             View API Usage Guide
           </Link>
         </div>
@@ -284,12 +293,12 @@ ws.on('message', (data) => {
               </div>
             </section>
 
-            <div className="h-px bg-zinc-900 my-8"></div>
+            <div className="h-px bg-white/[0.05] my-8"></div>
 
             <section>
               <h2 className="text-sm font-medium text-white mb-4">Pipeline Metrics</h2>
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-[#0A0A0A] border border-zinc-800/50 rounded-lg relative">
+                <div className="p-4 bg-[#09090b] border border-white/[0.08] rounded-xl relative shadow-sm">
                   <div className="text-xs text-zinc-500 mb-1 flex items-center justify-between">
                     {testedLatency ? 'Tested Latency' : 'Estimated Latency'}
                     {testedLatency && (
@@ -308,7 +317,7 @@ ws.on('message', (data) => {
                     <span className="text-xs text-zinc-500 ml-1">ms</span>
                   </div>
                 </div>
-                <div className="p-4 bg-[#0A0A0A] border border-zinc-800/50 rounded-lg">
+                <div className="p-4 bg-[#09090b] border border-white/[0.08] rounded-xl shadow-sm">
                   <div className="text-xs text-zinc-500 mb-1">Average Accuracy</div>
                   <div className="text-lg font-medium text-zinc-200">{avgAccuracy.toFixed(1)}<span className="text-xs text-zinc-500 ml-1">%</span></div>
                 </div>
@@ -318,33 +327,33 @@ ws.on('message', (data) => {
 
           {/* Right Column: Key Generation */}
           <div className="lg:col-span-5">
-            <section className="bg-[#0A0A0A] border border-zinc-800/80 p-6 rounded-xl">
+            <section className="bg-[#09090b] border border-white/[0.08] p-5 rounded-2xl shadow-xl">
               <h2 className="text-sm font-medium text-white mb-6">Configure Credentials</h2>
               
               <div className="space-y-4">
                 {generatedKey ? (
                   <div className="animate-in fade-in duration-200">
-                    <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
+                    <div className="p-4 bg-black/40 border border-white/[0.05] rounded-xl mb-4">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[10px] uppercase text-zinc-400 font-medium tracking-wider">Secret Key</span>
                         <button onClick={() => copyToClipboard(generatedKey)} className="text-blue-500 hover:text-blue-400 transition-colors">
                           {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
-                      <div className="font-mono text-xs text-zinc-300 break-all bg-black p-2 rounded border border-zinc-800">
+                      <div className="font-mono text-xs text-zinc-300 break-all bg-black p-2 rounded border border-white/[0.05]">
                         {generatedKey}
                       </div>
                       <p className="text-[10px] text-zinc-500 mt-2">Copy this key now. You won't be able to see it again.</p>
                     </div>
 
-                    <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
+                    <div className="p-4 bg-black/40 border border-white/[0.05] rounded-xl mb-4">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[10px] uppercase text-zinc-400 font-medium tracking-wider">Test with WebSocket</span>
                         <button onClick={() => copyToClipboard(wsSnippet, true)} className="text-zinc-500 hover:text-zinc-400 transition-colors">
                           {curlCopied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
-                      <pre className="font-mono text-[10px] text-zinc-400 overflow-x-auto bg-black p-3 rounded border border-zinc-800 custom-scrollbar leading-relaxed">
+                      <pre className="font-mono text-[10px] text-zinc-400 overflow-x-auto bg-black p-3 rounded border border-white/[0.05] custom-scrollbar leading-relaxed">
                         {wsSnippet}
                       </pre>
                     </div>
@@ -353,7 +362,7 @@ ws.on('message', (data) => {
                       {isTesting ? (
                         <button 
                           onClick={stopTesting}
-                          className="w-full flex items-center justify-center gap-2 text-xs bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-lg py-2.5 transition-colors"
+                          className="w-full flex items-center justify-center gap-2 text-xs bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-xl py-2.5 transition-colors shadow-sm"
                         >
                           <Square className="w-3.5 h-3.5 fill-current" />
                           Stop Testing
@@ -361,7 +370,7 @@ ws.on('message', (data) => {
                       ) : (
                         <button 
                           onClick={() => startTesting(generatedKey)}
-                          className="w-full flex items-center justify-center gap-2 text-xs bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-lg py-2.5 transition-colors"
+                          className="w-full flex items-center justify-center gap-2 text-xs bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-xl py-2.5 transition-colors shadow-sm"
                         >
                           <Mic className="w-3.5 h-3.5" />
                           Test Pipeline (Mic)
@@ -369,15 +378,15 @@ ws.on('message', (data) => {
                       )}
                       <button 
                         onClick={() => { setGeneratedKey(null); stopTesting(); }} 
-                        className="w-full text-xs bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-lg py-2.5 transition-colors"
+                        className="w-full text-xs bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-xl py-2.5 transition-colors shadow-sm"
                       >
                         Done
                       </button>
                     </div>
 
                     {isTesting && (
-                      <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-500/5 p-3 rounded-lg border border-blue-500/10">
-                        <Activity className="w-4 h-4 animate-pulse" />
+                      <div className="flex items-center gap-2 text-[10px] text-blue-400 bg-blue-500/5 p-3 rounded-lg border border-blue-500/10 mt-3">
+                        <Activity className="w-3.5 h-3.5 animate-pulse" />
                         <span>Live WebSocket stream active. Speak into your microphone.</span>
                       </div>
                     )}
@@ -390,7 +399,7 @@ ws.on('message', (data) => {
                         type="text" 
                         value={keyName}
                         onChange={(e) => setKeyName(e.target.value)}
-                        className="w-full bg-black border border-zinc-800 px-3 py-2 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-zinc-600 transition-colors placeholder:text-zinc-700"
+                        className="w-full bg-[#050505] border border-white/[0.08] px-3 py-2.5 rounded-xl text-white text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-600"
                         placeholder="e.g. Production Env"
                       />
                     </div>
@@ -405,7 +414,7 @@ ws.on('message', (data) => {
                               type="password"
                               value={providerKeys[provider] || ''}
                               onChange={(e) => setProviderKeys({...providerKeys, [provider]: e.target.value})}
-                              className="w-full bg-black border border-zinc-800 px-3 py-2 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-blue-500/50 transition-colors placeholder:text-zinc-800"
+                              className="w-full bg-[#050505] border border-white/[0.08] px-3 py-2.5 rounded-xl text-white text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-700"
                               placeholder={`Enter ${provider} API Key`}
                             />
                           </div>
@@ -416,7 +425,7 @@ ws.on('message', (data) => {
                     <button 
                       onClick={handleGenerateKey} 
                       disabled={generating || !keyName.trim()}
-                      className="w-full bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg py-2.5 text-sm font-medium transition-colors"
+                      className="w-full bg-blue-600 text-white hover:bg-blue-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed rounded-xl py-2.5 text-xs font-semibold mt-2 transition-colors"
                     >
                       {generating ? 'Generating...' : 'Generate Key'}
                     </button>
@@ -428,7 +437,7 @@ ws.on('message', (data) => {
         </div>
 
         {/* API Keys Table */}
-        <section className="pt-8 border-t border-zinc-900">
+        <section className="pt-8 border-t border-white/[0.05]">
           <h2 className="text-sm font-medium text-white mb-6">Active Keys</h2>
           
           {keys.length === 0 ? (

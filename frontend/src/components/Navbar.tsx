@@ -201,6 +201,7 @@ const Navbar: React.FC = () => {
 
   const navItems = [
     { name: 'My Voice Agents', path: '/modules', icon: <Layers className="w-4 h-4" /> },
+    { name: 'Campaigns', path: '/campaign', icon: <PlayCircle className="w-4 h-4" /> },
     { name: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-4 h-4" /> },
     { name: 'Developers', path: '/developer', icon: <Code className="w-4 h-4" /> },
     { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },

@@ -596,14 +596,24 @@ const AnalyticsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10 pt-20 sm:pt-24">
-      <div className="w-full max-w-7xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12">
+      {/* Rich Background Elements */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+      
+      <div className="w-full max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-6 sm:mb-8 md:mb-10 mt-16">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6">
+        <div className="mb-6 sm:mb-8 md:mb-10 text-left">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
+            <PieChartIcon className="w-3 h-3 text-blue-400" />
+            <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Insights</span>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2">Analytics Dashboard</h1>
-              <p className="text-zinc-400 text-sm sm:text-base">Track your call performance and insights</p>
+              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Analytics<span className="text-zinc-500">.</span></h1>
+              <p className="text-zinc-400 text-xs leading-relaxed">
+                Track your call performance and insights.
+              </p>
             </div>
             <div className="flex items-center gap-2 mt-4 sm:mt-0">
               <Button 
@@ -662,64 +672,64 @@ const AnalyticsPage: React.FC = () => {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6">
+          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-zinc-400 text-xs sm:text-sm">Total Calls</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-white">{analyticsData?.totalCalls}</p>
-                <p className="text-xs text-zinc-500 mt-1">Last {timeRange}</p>
+                <p className="text-zinc-400 text-xs">Total Calls</p>
+                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.totalCalls}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">Last {timeRange}</p>
               </div>
-              <div className="bg-blue-500/20 p-2 sm:p-3 rounded-full">
-                <PhoneCall className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
+              <div className="bg-blue-500/20 p-2 sm:p-2.5 rounded-xl">
+                <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
               </div>
             </div>
           </Card>
 
-          <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6">
+          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-zinc-400 text-xs sm:text-sm">Success Rate</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-white">{analyticsData?.successRate.toFixed(1)}%</p>
-                <p className="text-xs text-zinc-500 mt-1">{analyticsData?.completedCalls} completed</p>
+                <p className="text-zinc-400 text-xs">Success Rate</p>
+                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.successRate.toFixed(1)}%</p>
+                <p className="text-[10px] text-zinc-500 mt-1">{analyticsData?.completedCalls} completed</p>
               </div>
-              <div className="bg-green-500/20 p-2 sm:p-3 rounded-full">
-                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-green-400" />
+              <div className="bg-green-500/20 p-2 sm:p-2.5 rounded-xl">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
               </div>
             </div>
           </Card>
 
-          <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6">
+          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-zinc-400 text-xs sm:text-sm">Avg Duration</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-white">{formatDuration(Math.round(analyticsData?.averageDuration || 0))}</p>
-                <p className="text-xs text-zinc-500 mt-1">per call</p>
+                <p className="text-zinc-400 text-xs">Avg Duration</p>
+                <p className="text-xl sm:text-2xl font-bold text-white">{formatDuration(Math.round(analyticsData?.averageDuration || 0))}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">per call</p>
               </div>
-              <div className="bg-yellow-500/20 p-2 sm:p-3 rounded-full">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
+              <div className="bg-yellow-500/20 p-2 sm:p-2.5 rounded-xl">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
               </div>
             </div>
           </Card>
 
-          <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6">
+          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-zinc-400 text-xs sm:text-sm">Failed Calls</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-white">{analyticsData?.failedCalls}</p>
-                <p className="text-xs text-zinc-500 mt-1">{analyticsData?.failedCalls > 0 ? `${((analyticsData.failedCalls / analyticsData.totalCalls) * 100).toFixed(1)}%` : '0%'} rate</p>
+                <p className="text-zinc-400 text-xs">Failed Calls</p>
+                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.failedCalls}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">{analyticsData?.failedCalls > 0 ? `${((analyticsData.failedCalls / analyticsData.totalCalls) * 100).toFixed(1)}%` : '0%'} rate</p>
               </div>
-              <div className="bg-red-500/20 p-2 sm:p-3 rounded-full">
-                <XCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
+              <div className="bg-red-500/20 p-2 sm:p-2.5 rounded-xl">
+                <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
               </div>
             </div>
           </Card>
         </div>
 
         {/* AI Result Distribution */}
-        <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6 mb-6 sm:mb-8">
+        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-6 sm:mb-8 rounded-2xl shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
             <div>
-              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white">AI Evaluation Results</h3>
+              <h3 className="text-sm sm:text-base font-bold text-white">AI Evaluation Results</h3>
               <p className="text-xs text-zinc-400 mt-1">Lead qualification from customer conversations</p>
             </div>
             <div className="flex items-center gap-3">
@@ -842,7 +852,7 @@ const AnalyticsPage: React.FC = () => {
 
         {/* Bulk Call Statistics */}
         {analyticsData?.bulkCallStats && analyticsData.bulkCallStats.length > 0 && (
-          <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6 mb-6 sm:mb-8">
+        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-6 sm:mb-8 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <div>
                 <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white">Bulk Call Campaigns</h3>
@@ -1086,7 +1096,7 @@ const AnalyticsPage: React.FC = () => {
         )}
 
         {/* Recent Calls Table */}
-        <Card className="bg-zinc-900/50 border-zinc-800 p-4 sm:p-6 mb-10 overflow-hidden">
+        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-10 overflow-hidden rounded-2xl shadow-xl">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold text-white tracking-tight">Recent Calls</h3>
           </div>

@@ -120,36 +120,41 @@ const ModulesPage: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10 pt-20 sm:pt-24">
-      <div className="w-full max-w-7xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12">
+      {/* Rich Background Elements */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+
+      <div className="w-full max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-8 sm:mb-10 mt-20">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <Layers className="w-6 h-6 text-blue-400" />
+        <div className="mb-8 sm:mb-10 text-left">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
+                <Layers className="w-3 h-3 text-blue-400" />
+                <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Agents</span>
               </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-zinc-100 mb-1">My Voice Agents</h1>
-                <p className="text-zinc-500 text-sm sm:text-base">Create, manage, and organize your AI personas</p>
-              </div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Voice Agents<span className="text-zinc-500">.</span></h1>
+              <p className="text-zinc-400 text-xs leading-relaxed">
+                Create, manage, and organize your AI personas
+              </p>
             </div>
             <div className="flex items-center gap-3">
               {selectedModule && (
                 <button
-                  className="flex items-center gap-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium px-4 py-2 rounded-xl transition-all duration-200 text-sm"
+                  className="flex items-center gap-2 bg-[#09090b] border border-white/[0.08] hover:bg-white/[0.02] text-zinc-300 font-medium px-3 py-1.5 rounded-xl transition-all duration-200 text-xs"
                   onClick={() => setSelectedModule(null)}
                   title="Clear Selection"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                   Clear
                 </button>
               )}
               <button
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-zinc-100 font-medium px-6 py-3 rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-blue-500/30"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs transition-all duration-200 shadow-sm"
                 onClick={() => window.location.href = '/create-module'}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 Create Agent
               </button>
             </div>
@@ -197,9 +202,9 @@ const ModulesPage: React.FC = () => {
             {modules.map((mod) => (
               <div
                 key={mod.id}
-                className={`group relative bg-zinc-900/50 border rounded-2xl p-6 hover:bg-zinc-900/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${selectedModule === mod.id
-                  ? 'border-blue-500/50 bg-blue-900/20 shadow-lg shadow-blue-500/20'
-                  : 'border-zinc-800 hover:border-zinc-700'
+                className={`group relative bg-[#09090b] border rounded-2xl p-5 hover:bg-[#0c0c0e] transition-all duration-300 hover:-translate-y-1 shadow-xl ${selectedModule === mod.id
+                  ? 'border-blue-500/50 bg-blue-900/10'
+                  : 'border-white/[0.08] hover:border-white/[0.12]'
                   }`}
               >
                 {/* Selection indicator */}
@@ -249,9 +254,9 @@ const ModulesPage: React.FC = () => {
                 {/* Module Actions */}
                 <div className="flex items-center gap-2 mb-6">
                   <button
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedModule === mod.id
-                      ? 'bg-blue-600 text-zinc-100 shadow-lg shadow-blue-500/25'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-200'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${selectedModule === mod.id
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-[#050505] border border-white/[0.08] text-zinc-300 hover:bg-zinc-900'
                       }`}
                     onClick={() => handleSelectModule(mod.id!)}
                   >
