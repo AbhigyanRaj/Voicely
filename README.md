@@ -39,6 +39,35 @@ Want to integrate Voicely into your own CRM or application? We provide a compreh
 
 ---
 
+## Deployment & Scalability
+
+### Current Platform Capacity (Free Tiers)
+Currently, this project is designed to be highly accessible and is hosted using free-tier services. 
+
+| Service | Provider | Current Capacity / Limit |
+| :--- | :--- | :--- |
+| **Backend API** | Render (Free Tier) | 1 Web Server, pauses after inactivity. |
+| **Frontend** | Vercel (Free Tier) | Standard Vercel hobby tier limits. |
+| **Database** | MongoDB Atlas (M0 Free) | 512 MB Storage, max 500 connections. |
+| **Live Voice Calls**| Twilio & WebSockets | ~5-10 Concurrent active voice streams (due to Render CPU limits). |
+
+*Note: While perfect for sandbox testing and development, the free tiers will bottleneck during heavy, sustained concurrent live voice calls due to memory and compute limitations.*
+
+### Improvement Plan & Enterprise Scaling 
+We are actively seeking **contributions and funding** to scale Voicely into a true enterprise-grade open-source SaaS. The monolithic Node.js architecture is perfectly suited for horizontal scaling once moved to dedicated infrastructure.
+
+Our roadmap for enterprise deployment includes migrating to **AWS (ECS / Fargate)**, utilizing **Application Load Balancers** for WebSocket sticky sessions, and upgrading to **MongoDB Atlas Dedicated Clusters (M40+)**.
+
+**Projected Metrics (Enterprise AWS Setup):**
+
+| Component | Projected Capacity | Description |
+| :--- | :--- | :--- |
+| **API & Dashboard Traffic** | **100,000+** Concurrent Users | Stateless Node.js REST API scaling horizontally across AWS auto-scaling groups. |
+| **Active Live Voice Calls** | **5,000 - 20,000+** Concurrent | Bound only by Twilio Enterprise CPS limits and LLM (Cartesia/Gemini) rate limits. |
+| **Database Operations** | **Unlimited** | Utilizing MongoDB sharding and read-replicas for heavy call logging and analytics. |
+
+---
+
 ## Architecture & High-Level Design (HLD)
 
 Voicely uses a robust **Monolith** architecture (Node.js/Express backend + React frontend). We specifically chose a monolith approach to make it incredibly easy for the open-source community to deploy, understand, and contribute to, without the headache of managing multiple microservices. 
