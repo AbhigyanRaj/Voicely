@@ -1,6 +1,6 @@
 # Voicely API Documentation
 
-Welcome to the Voicely API! Our API allows you to programmatically manage your Voice Agents, initiate automated outbound calls, and fetch call analytics.
+Welcome to the Voicely API! Our REST API allows you to programmatically manage your Voice Agents, initiate automated outbound calls, fetch call analytics, and manage developer keys.
 
 ## Base URL
 ```
@@ -9,7 +9,7 @@ https://your-domain.com/api
 *(In local development, use `http://localhost:5001/api` or your configured PORT)*
 
 ## Authentication
-All API requests (except public webhooks and health checks) require authentication. 
+All private API requests require authentication. 
 
 You can authenticate using a **Developer API Key** (generated from the Developers tab in the dashboard).
 
@@ -20,40 +20,37 @@ Authorization: Bearer <YOUR_API_KEY>
 
 ---
 
-## 1. Campaigns & Calls
+## 1. Calls
 
 ### Initiate a Call
-Trigger an automated outbound call to a specific phone number using a predefined Voice Agent (Module).
+Trigger an automated outbound call to a specific phone number.
 
 **Endpoint:** `POST /calls/initiate`
+**Access:** Private
 
 **Request Body:**
 ```json
 {
   "to": "+1234567890",
   "name": "John Doe",
-  "moduleId": "64a7c8f... (Your Voice Agent ID)",
+  "moduleId": "64a7c8f...",
   "language": "en-US",
   "ttsProvider": "cartesia", 
   "voiceId": "47c38ca4-..." 
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Call initiated",
-  "callId": "64a7c9d..."
-}
-```
-
 ### Get Call History
-Fetch the history of all calls, including their duration, outcome, and status.
+Fetch the history of all calls in the workspace.
 
-**Endpoint:** `GET /calls`
+**Endpoint:** `GET /calls/history`
+**Access:** Private
 
-**Response:** Array of Call Objects.
+### Get Call Details
+Fetch details for a specific call by ID.
+
+**Endpoint:** `GET /calls/:id`
+**Access:** Private
 
 ---
 
@@ -63,25 +60,13 @@ Fetch the history of all calls, including their duration, outcome, and status.
 Fetch all Voice Agents (Modules) available in your workspace.
 
 **Endpoint:** `GET /modules`
-
-**Response:**
-```json
-[
-  {
-    "id": "64a7c8f...",
-    "name": "Sales SDR Agent",
-    "systemPrompt": "You are a sales agent...",
-    "questions": [
-      { "question": "Are you interested in our product?" }
-    ]
-  }
-]
-```
+**Access:** Private
 
 ### Create a Voice Agent
 Programmatically create a new Voice Agent persona.
 
 **Endpoint:** `POST /modules`
+**Access:** Private
 
 **Request Body:**
 ```json
@@ -94,53 +79,84 @@ Programmatically create a new Voice Agent persona.
 }
 ```
 
+### Get Agent Details
+Fetch details of a specific Voice Agent.
+
+**Endpoint:** `GET /modules/:id`
+**Access:** Private
+
+### Update Agent
+Update an existing Voice Agent.
+
+**Endpoint:** `PUT /modules/:id`
+**Access:** Private
+
+### Delete Agent
+Delete an existing Voice Agent.
+
+**Endpoint:** `DELETE /modules/:id`
+**Access:** Private
+
 ---
 
-## 3. Analytics & Stats
+## 3. Leads & Analytics
 
-### Get Dashboard Stats
-Fetch aggregated statistics for the Analytics dashboard.
+### Get Lead Timeline
+Get the lifecycle timeline for a specific phone number.
 
-**Endpoint:** `GET /stats`
-
-**Response:**
-```json
-{
-  "totalCalls": 124,
-  "totalDurationMinutes": 345,
-  "successRate": 85.5,
-  "activeCampaigns": 3
-}
-```
+**Endpoint:** `GET /leads/timeline`
+**Access:** Private
+**Query Parameters:**
+- `phoneNumber` (required): The phone number to query.
+- `workspaceId` (required): The workspace context.
 
 ---
 
-## 4. Workspaces & Settings
+## 4. Developer Tools
 
-### Get Workspace Details
-Fetch current workspace configuration.
+### Get Pipeline Options
+Get available STT, LLM, and TTS models for the developer sandbox.
 
-**Endpoint:** `GET /workspaces/current`
+**Endpoint:** `GET /developer/options`
+**Access:** Private
 
-### Update Provider Settings
-Update your Twilio, Cartesia, or LLM API keys.
+### Get Developer Keys
+List all generated API keys.
 
-**Endpoint:** `POST /settings/providers`
+**Endpoint:** `GET /developer/keys`
+**Access:** Private
 
+### Create Developer Key
+Generate a new API key with specific pipeline configuration.
+
+**Endpoint:** `POST /developer/keys`
+**Access:** Private
 **Request Body:**
 ```json
 {
-  "twilioSid": "AC...",
-  "twilioToken": "...",
-  "twilioNumber": "+1234567890"
+  "name": "Production Key",
+  "pipelineConfig": {
+    "sttModel": "deepgram-nova",
+    "llmModel": "gemini-1.5-flash",
+    "ttsModel": "cartesia-sonic"
+  }
 }
 ```
 
+### Delete Developer Key
+Revoke an existing API key.
+
+**Endpoint:** `DELETE /developer/keys/:id`
+**Access:** Private
+
 ---
 
-## Webhooks & Real-Time Streams
+## 5. Webhooks & Real-Time Streams (Public)
 
 Voicely heavily utilizes WebSockets for low-latency audio processing.
+
+- **Twilio Status Webhook:** `POST /calls/status`
+- **Twilio TwiML Webhook:** `POST /calls/handle-call`
 - **Twilio Media Streams:** `wss://your-domain.com/api/streams/twilio` (Handled automatically by the system when a call is placed).
 - **Live Call UI Sync:** `wss://your-domain.com/live-call` (For dashboard UI updates).
 - **Developer Stream:** `wss://your-domain.com/api/v1/stream` (For advanced programmatic stream handling).
