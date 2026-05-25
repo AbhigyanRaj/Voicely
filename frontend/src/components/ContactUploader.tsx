@@ -6,6 +6,8 @@ import { api } from "../lib/api";
 
 
 import { GOOGLE_LANGUAGES, GOOGLE_VOICES, SARVAM_LANGUAGES, SARVAM_VOICES } from "../lib/ttsConfig";
+import { getProviders } from "../lib/settings";
+import type { ProviderCredential } from "../lib/settings";
 
 interface Contact {
   name: string;
@@ -72,6 +74,11 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
   const languageDropdownRef = useRef<HTMLDivElement | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [userProviders, setUserProviders] = useState<ProviderCredential[]>([]);
+
+  useEffect(() => {
+    getProviders().then(setUserProviders).catch(console.error);
+  }, []);
 
   const playDemo = async (voiceId: string) => {
     // If already playing this voice, stop it
@@ -331,6 +338,12 @@ const ContactUploader: React.FC<ContactUploaderProps> = ({
 
     try {
       let contactsToCall: { name: string; phone: string }[] = [];
+
+      if (userProviders.length === 0) {
+        setError("You must configure a Call Provider (e.g. Twilio) in Settings first.");
+        setCalling(false);
+        return;
+      }
 
       if (contacts.length > 0) {
         const selected = contacts.filter(c => c.selected);

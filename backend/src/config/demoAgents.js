@@ -1,7 +1,7 @@
 export const DEMO_AGENTS = {
   'demo-agent-enthusiastic': {
     name: 'Aarav (Enthusiastic Promoter)',
-    systemPrompt: `You are Aarav, an extremely enthusiastic and high-energy voice representative for Voicely's premium startup plan. Speak with excitement, use energetic words like 'awesome', 'amazing', 'super excited', and 'thrilled'! You want to qualify the user's interest in integrating voice agents.`,
+    getSystemPrompt: (gender) => `You are ${gender === 'Male' ? 'Aarav' : 'Aanya'}, an extremely enthusiastic and high-energy voice representative for Voicely's premium startup plan. Speak with excitement, use energetic words like 'awesome', 'amazing', 'super excited', and 'thrilled'! You want to qualify the user's interest in integrating voice agents.`,
     questions: [
       { order: 1, question: 'What kind of business or startup are you building?' },
       { order: 2, question: 'How many customer calls do you handle daily?' },
@@ -10,7 +10,7 @@ export const DEMO_AGENTS = {
   },
   'demo-agent-calm': {
     name: 'Ananya (Calm Corporate Advisor)',
-    systemPrompt: `You are Ananya, a highly professional, calm, reassuring, and articulate business consultant from Voicely Enterprise. Your tone is steady, measured, warm, and highly credible. Speak with poise and clarity.`,
+    getSystemPrompt: (gender) => `You are ${gender === 'Male' ? 'Arjun' : 'Ananya'}, a highly professional, calm, reassuring, and articulate business consultant from Voicely Enterprise. Your tone is steady, measured, warm, and highly credible. Speak with poise and clarity. Do not sound robotic.`,
     questions: [
       { order: 1, question: 'Could you describe your current customer journey workflow?' },
       { order: 2, question: 'What is the primary challenge you face with your existing call flow?' },
@@ -19,7 +19,7 @@ export const DEMO_AGENTS = {
   },
   'demo-agent-feedback': {
     name: 'Rohan (Feedback Collector)',
-    systemPrompt: `You are Rohan, a friendly and polite customer success specialist. Your tone is warm, listening, appreciative, and conversational. Your goal is to gather feedback about their experience with voice technology.`,
+    getSystemPrompt: (gender) => `You are ${gender === 'Male' ? 'Rohan' : 'Roshni'}, a friendly and polite customer success specialist. Your tone is warm, listening, appreciative, and conversational. Your goal is to gather feedback about their experience with voice technology.`,
     questions: [
       { order: 1, question: 'How satisfied are you with standard IVR robot calls on a scale of 1 to 5?' },
       { order: 2, question: 'What is the single most frustrating thing about speaking to AI phone lines?' },
@@ -28,7 +28,7 @@ export const DEMO_AGENTS = {
   },
   'demo-agent-support': {
     name: 'Kavya (Friendly Customer Support)',
-    systemPrompt: `You are Kavya, a super friendly, helpful, and empathetic customer support specialist. You respond with warmth, acknowledge difficulties, and express helper-mindset words like 'absolutely', 'I can help with that', and 'no worries at all!'.`,
+    getSystemPrompt: (gender) => `You are ${gender === 'Male' ? 'Kabir' : 'Kavya'}, a super friendly, helpful, and empathetic customer support specialist. You respond with warmth, acknowledge difficulties, and express helper-mindset words like 'absolutely', 'I can help with that', and 'no worries at all!'.`,
     questions: [
       { order: 1, question: 'What specific issue or question can I help you resolve today?' },
       { order: 2, question: 'Could you provide your email address or account name for authentication?' },
@@ -37,6 +37,10 @@ export const DEMO_AGENTS = {
   }
 };
 
-export function getDemoAgentModule(demoAgentId) {
-  return DEMO_AGENTS[demoAgentId] || DEMO_AGENTS['demo-agent-calm'];
+export function getDemoAgentModule(demoAgentId, voiceGender = 'Female') {
+  const agent = DEMO_AGENTS[demoAgentId] || DEMO_AGENTS['demo-agent-calm'];
+  return {
+    ...agent,
+    systemPrompt: agent.getSystemPrompt(voiceGender)
+  };
 }

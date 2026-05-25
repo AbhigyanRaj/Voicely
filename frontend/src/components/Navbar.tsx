@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { LogOut, Menu, User, X, Layers, BarChart3, Settings, Crown, PlayCircle, Eye, EyeOff } from "lucide-react";
+import { LogOut, Menu, User, X, Layers, BarChart3, Settings, Crown, PlayCircle, Eye, EyeOff, Code } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import Modal from "./ui/modal";
 import { Button } from "./ui/button";
@@ -202,6 +202,7 @@ const Navbar: React.FC = () => {
   const navItems = [
     { name: 'My Voice Agents', path: '/modules', icon: <Layers className="w-4 h-4" /> },
     { name: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-4 h-4" /> },
+    { name: 'Developers', path: '/developer', icon: <Code className="w-4 h-4" /> },
     { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
   ];
 
@@ -212,7 +213,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-10">
             <div className="flex items-center justify-between w-full py-10">
               {/* Logo */}
-              <div className="flex">
+              <div className="flex flex-1">
                 <Link to="/" className="flex">
                   <img src="/logo.png" alt="Voicely" className="h-12 w-auto hover:opacity-80 transition-opacity mt-2" />
                 </Link>
@@ -220,7 +221,7 @@ const Navbar: React.FC = () => {
 
               {/* Nav links (desktop, logged in) */}
               {user && (
-                <div className="hidden lg:flex items-center gap-6 ml-72">
+                <div className="hidden lg:flex items-center justify-center gap-6 flex-shrink-0">
                   {navItems.map((item) => (
                     <Link
                       key={item.path}
@@ -246,24 +247,9 @@ const Navbar: React.FC = () => {
               )}
 
               {/* Right section (desktop) */}
-              <div className="hidden lg:flex items-center space-x-3">
+              <div className="hidden lg:flex items-center justify-end flex-1 space-x-3">
                 {user ? (
                   <>
-                    <a
-                      href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition-colors"
-                    >
-                      <PlayCircle className="w-3.5 h-3.5 text-zinc-400" />
-                      Demo
-                    </a>
-                    <Link
-                      to="/buy-token"
-                      className="flex items-center gap-1.5 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700 rounded-full px-3 py-1.5 transition-colors group"
-                    >
-                      <Crown className={`w-3.5 h-3.5 group-hover:text-blue-300 ${userPlan === 'Pro' ? 'text-blue-400' : 'text-zinc-500'}`} />
-                      <span className="text-xs font-medium text-zinc-300 group-hover:text-white">{userPlan}</span>
-                    </Link>
                     <div className="flex items-center space-x-1.5">
                       <User className="w-4 h-4 text-zinc-400" />
                       <span className="text-zinc-300 text-xs">{user.name}</span>

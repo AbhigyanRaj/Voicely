@@ -35,6 +35,10 @@ class SarvamService extends EventEmitter {
         try {
             const sampleRate = isWebCall ? 16000 : 8000;
             const startNetwork = performance.now();
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+            
             const response = await fetch(this.ttsUrl, {
                 method: 'POST',
                 headers: {
@@ -48,8 +52,10 @@ class SarvamService extends EventEmitter {
                     model: 'bulbul:v2',   // Using 'bulbul:v2' (valid model)
                     sampling_rate: sampleRate,
                     enable_preprocessing: false
-                })
+                }),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
             const netDuration = performance.now() - startNetwork;
             logger.info(`[LATENCY TIMER] Sarvam network request took ${netDuration.toFixed(1)}ms`);
@@ -72,22 +78,34 @@ class SarvamService extends EventEmitter {
             const wav = new WaveFile();
             wav.fromBuffer(wavBuffer);
             
-            // 1. Downsample to target sampleRate
+            // 1. Downsample or resample to target sampleRate
             wav.toSampleRate(sampleRate);
             
-            // 2. Transcode the Linear PCM to 8-bit Mu-Law
-            wav.toMuLaw();
+            let rawAudioBuf;
+            let encoding = 'mulaw';
+
+            if (isWebCall) {
+                // Return 32-bit Float PCM Linear for high fidelity Web Sandbox
+                wav.toBitDepth('32f');
+                rawAudioBuf = Buffer.from(wav.data.samples);
+                encoding = 'pcm_f32le';
+            } else {
+                // 2. Transcode the Linear PCM to 8-bit Mu-Law for Twilio
+                wav.toMuLaw();
+                rawAudioBuf = Buffer.from(wav.data.samples);
+            }
             
-            // 3. Extract just the raw audio samples without the RIFF/WAVE header
-            // wav.data.samples contains the raw Float64Array or Uint8Array.
-            const rawAudioBuf = Buffer.from(wav.data.samples);
             const transcodeDuration = performance.now() - startTranscode;
             const totalDuration = performance.now() - startTotal;
 
             logger.info(`[LATENCY TIMER] Wavefile transcode took ${transcodeDuration.toFixed(1)}ms`);
             logger.info(`[LATENCY TIMER] Total Sarvam Synthesis finished in ${totalDuration.toFixed(1)}ms`);
 
-            return rawAudioBuf.toString('base64');
+            return {
+                payload: rawAudioBuf.toString('base64'),
+                encoding,
+                sampleRate
+            };
         } catch (error) {
             logger.error('Sarvam Synthesis Error', error);
             return null;
@@ -108,11 +126,12 @@ class SarvamService extends EventEmitter {
  * Buffers text chunks and synthesizes audio using Sarvam AI
  */
 export class StreamingSarvamTTS extends EventEmitter {
-    constructor(languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false) {
+    constructor(languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false, optimizeFor = 'latency') {
         super();
         this.languageCode = languageCode;
         this.speaker = speaker;
         this.isWebCall = isWebCall;
+        this.optimizeFor = optimizeFor;
         this.textBuffer = '';
         this.isProcessing = false;
         this.audioQueue = [];
@@ -132,9 +151,23 @@ export class StreamingSarvamTTS extends EventEmitter {
         }
     }
 
+    clear() {
+        this.audioQueue = [];
+        this.textBuffer = '';
+        this.isProcessing = false;
+    }
+
     checkBoundaries() {
-        // 1. First check for punctuation boundaries (sentence endpoints or commas)
-        const boundaryTokens = /([।?!.;]+\s+|,[\s]*)/;
+        // Only split on natural punctuation boundaries to prevent unnatural pauses mid-sentence.
+        // Use negative lookbehind to avoid splitting on common abbreviations like Mr. or Dr.
+        // For Sarvam, we only add commas if specifically optimizing for latency, though it may cause issues for very short phrases.
+        let boundaryTokens;
+        if (this.optimizeFor === 'latency') {
+            boundaryTokens = /(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc))\s*([।?!.;,]+\s+)/i;
+        } else {
+            boundaryTokens = /(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc))\s*([।?!.;]+\s+)/i;
+        }
+        
         const parts = this.textBuffer.split(boundaryTokens);
 
         if (parts.length > 2) {
@@ -148,35 +181,6 @@ export class StreamingSarvamTTS extends EventEmitter {
             }
             this.textBuffer = parts.slice(i).join('');
             this._processQueue();
-            return;
-        }
-
-        // 2. Connective word boundary fallback: split on connective words if buffer has 5+ words
-        const words = this.textBuffer.trim().split(/\s+/);
-        if (words.length >= 6) {
-            const connectiveIndex = words.findIndex((w, idx) => {
-                if (idx < 2) return false; // Don't split too early
-                const lowerWord = w.toLowerCase().replace(/[^a-zअ-ज्ञ]/g, '');
-                return ['and', 'but', 'or', 'so', 'because', 'कि', 'और', 'तो', 'लेकिन', 'फिर'].includes(lowerWord);
-            });
-
-            if (connectiveIndex !== -1 && connectiveIndex < words.length - 1) {
-                const phrase = words.slice(0, connectiveIndex + 1).join(' ');
-                this.textBuffer = words.slice(connectiveIndex + 1).join(' ') + ' ';
-                logger.debug(`[TTS CHUNKER - SARVAM] Splitting on connective: "${phrase}"`);
-                this.audioQueue.push(phrase);
-                this._processQueue();
-                return;
-            }
-        }
-
-        // 3. Fallback word limit boundary: if no natural pause is found and we exceed 7 words, split at last word
-        if (words.length >= 8) {
-            const phrase = words.slice(0, 7).join(' ');
-            this.textBuffer = words.slice(7).join(' ') + ' ';
-            logger.debug(`[TTS CHUNKER - SARVAM] Splitting on word limit fallback: "${phrase}"`);
-            this.audioQueue.push(phrase);
-            this._processQueue();
         }
     }
 
@@ -187,9 +191,13 @@ export class StreamingSarvamTTS extends EventEmitter {
         try {
             while (this.audioQueue.length > 0) {
                 const textToSynth = this.audioQueue.shift();
-                const audioBase64 = await this.sarvam.synthesizeMulaw(textToSynth, this.languageCode, this.speaker, this.isWebCall);
-                if (audioBase64) {
-                    this.emit('audio', audioBase64);
+                const audioData = await this.sarvam.synthesizeMulaw(textToSynth, this.languageCode, this.speaker, this.isWebCall);
+                if (!this.isProcessing) {
+                    // Barge-in occurred while awaiting network request
+                    break;
+                }
+                if (audioData) {
+                    this.emit('audio', audioData);
                 }
             }
         } finally {

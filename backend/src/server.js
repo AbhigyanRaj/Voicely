@@ -30,6 +30,9 @@ import authRoutes from './routes/auth.js';
 import moduleRoutes from './routes/modules.js';
 import callRoutes from './routes/calls.js';
 import workspaceRoutes from './routes/workspaces.js';
+import settingsRoutes from './routes/settings.js';
+import developerRoutes from './routes/developer.js';
+import apiRoutes from './routes/api.js';
 import { setupMediaStreamWebSocket } from './routes/mediaStream.js';
 import { initializeLiveCallWebSocket } from './websocket/liveCallServer.js';
 import { initTelegramBot } from './services/botService.js';
@@ -147,6 +150,7 @@ const startServer = async () => {
     // Initialize WebSocket servers in noServer mode
     const mediaStreamWss = setupMediaStreamWebSocket();
     const liveCallWss = initializeLiveCallWebSocket();
+    const developerStreamWss = (await import('./websocket/developerStreamServer.js')).setupDeveloperStreamWebSocket();
 
     // Handle manual WebSocket upgrade dispatching
     httpServer.on('upgrade', (request, socket, head) => {
@@ -161,6 +165,10 @@ const startServer = async () => {
       } else if (pathname === '/live-call') {
         liveCallWss.handleUpgrade(request, socket, head, (ws) => {
           liveCallWss.emit('connection', ws, request);
+        });
+      } else if (pathname === '/api/v1/stream') {
+        developerStreamWss.handleUpgrade(request, socket, head, (ws) => {
+          developerStreamWss.emit('connection', ws, request);
         });
       } else {
         logger.warn(`Rejected WebSocket upgrade for unknown path: ${pathname}`);
@@ -190,6 +198,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/modules', moduleRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/workspaces', workspaceRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/developer', developerRoutes);
+app.use('/api/stats', (await import('./routes/stats.js')).default);
+app.use('/api', apiRoutes);
 app.use('/api/leads', (await import('./routes/leads.js')).default);
 
 // Health check with detailed database info

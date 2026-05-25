@@ -1,4 +1,5 @@
-import twilio from 'twilio';
+import { getSystemTwilioClient, getTwilioClientForUser } from '../config/twilio.js';
+import ProviderCredential from '../models/ProviderCredential.js';
 import Call from '../models/Call.js';
 import Module from '../models/Module.js';
 import { analyzeResponseWithGemini } from '../config/gemini.js';
@@ -12,10 +13,6 @@ import logger from '../utils/logger.js';
 if (process.env.NODE_ENV === 'development') {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
-
-const getTwilioClient = () => {
-    return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-};
 
 export const initiateCall = async (params) => {
     const { moduleId, phoneNumber, customerName, selectedVoice, selectedLanguage, ttsProvider, userId, priorContext } = params;
@@ -34,12 +31,29 @@ export const initiateCall = async (params) => {
 
     logger.info(`Generated Twilio Webhook URL: ${webhookUrl.toString()}`);
 
-    const client = getTwilioClient();
+    let client;
+    let fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
+    if (userId) {
+        try {
+            client = await getTwilioClientForUser(userId);
+            const provider = await ProviderCredential.findOne({ userId, providerName: 'twilio', isDefault: true });
+            if (provider && provider.credentials.phoneNumber) {
+                fromNumber = provider.credentials.phoneNumber;
+            }
+        } catch (error) {
+            logger.warn(`Failed to get custom Twilio client for user ${userId}, falling back to system client: ${error.message}`);
+            client = getSystemTwilioClient();
+        }
+    } else {
+        client = getSystemTwilioClient();
+    }
+
     const call = await client.calls.create({
         method: 'POST',
         url: webhookUrl.toString(),
         to: phoneNumber,
-        from: process.env.TWILIO_PHONE_NUMBER,
+        from: fromNumber,
         statusCallback: `${publicUrl}/api/calls/status`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
@@ -47,9 +61,71 @@ export const initiateCall = async (params) => {
     return call;
 };
 
-export const hangupCall = async (callSid) => {
+export const initiateDeveloperCall = async (params) => {
+    const { phoneNumber, prompt, developerKey } = params;
+    const publicUrl = process.env.NGROK_URL || process.env.BASE_URL;
+
+    if (!publicUrl) throw new Error('Public URL (BASE_URL/NGROK_URL) is required');
+
+    // Create a specific developer webhook URL.
+    // It passes the developerKeyId so mediaStream knows to use dynamic prompt and config.
+    const webhookUrl = new URL(`${publicUrl}/api/calls/handle-developer-call`);
+    webhookUrl.searchParams.set('phoneNumber', phoneNumber);
+    webhookUrl.searchParams.set('developerKeyId', developerKey._id.toString());
+    
+    // We must URL encode the prompt because it can be long
+    webhookUrl.searchParams.set('prompt', encodeURIComponent(prompt));
+
+    logger.info(`Generated Developer Twilio Webhook URL: ${webhookUrl.toString()}`);
+
+    let client;
+    let fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
     try {
-        const client = getTwilioClient();
+        client = await getTwilioClientForUser(developerKey.userId);
+        const provider = await ProviderCredential.findOne({ userId: developerKey.userId, providerName: 'twilio', isDefault: true });
+        if (provider && provider.credentials.phoneNumber) {
+            fromNumber = provider.credentials.phoneNumber;
+        }
+    } catch (error) {
+        logger.warn(`Failed to get custom Twilio client for developer ${developerKey.userId}, falling back to system client: ${error.message}`);
+        client = getSystemTwilioClient();
+    }
+
+    const call = await client.calls.create({
+        method: 'POST',
+        url: webhookUrl.toString(),
+        to: phoneNumber,
+        from: fromNumber,
+        statusCallback: `${publicUrl}/api/calls/status`,
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+        statusCallbackMethod: 'POST',
+    });
+    return call;
+};
+
+export const hangupCall = async (callSid, userId = null) => {
+    try {
+        let client;
+        if (userId) {
+            try {
+                client = await getTwilioClientForUser(userId);
+            } catch(e) {
+                client = getSystemTwilioClient();
+            }
+        } else {
+            // Try to look up the call to get the userId if not provided
+            const callRecord = await Call.findOne({ twilioCallSid: callSid });
+            if (callRecord && callRecord.userId) {
+                try {
+                    client = await getTwilioClientForUser(callRecord.userId);
+                } catch(e) {
+                    client = getSystemTwilioClient();
+                }
+            } else {
+                client = getSystemTwilioClient();
+            }
+        }
         const call = await client.calls(callSid).fetch();
         
         if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(call.status)) {

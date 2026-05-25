@@ -6,6 +6,7 @@ import StreamingCallHandler from '../services/streamingCallHandler.js';
 import StreamingGoogleTTS from '../services/streamingGoogleTTS.js';
 import { StreamingSarvamTTS } from '../services/sarvamService.js';
 import StreamingDeepgramTTS from '../services/streamingDeepgramTTS.js';
+import StreamingCartesiaTTS from '../services/streamingCartesiaTTS.js';
 import { extractAnswersJSON, evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
 import { broadcastTranscriptUpdate } from '../websocket/liveCallServer.js';
 import * as callService from '../services/callService.js';
@@ -17,35 +18,7 @@ const router = express.Router();
 // Store active streaming sessions
 const activeSessions = new Map();
 
-/**
- * Generates an outbound greeting that introduces the agent and establishes the call context naturally.
- */
-const generateOutboundGreeting = (customerName, moduleName, moduleType, languageCode) => {
-  const isHindi = languageCode?.toLowerCase()?.includes('hi') || languageCode === 'hindi';
-  const name = customerName && customerName.trim() !== '' ? customerName : '';
-  
-  if (isHindi) {
-    const greetingStart = name ? `नमस्ते ${name} जी! ` : `नमस्ते! `;
-    switch (moduleType) {
-      case 'loan':
-        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारी लोन सर्विसेज़ के लिए ऑनलाइन इन्क्वायरी की थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और कुछ बेसिक डिटेल्स ले लूँ। क्या आपके पास एक मिनट बात करने का समय है?`;
-      case 'credit_card':
-        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारे प्रीमियम क्रेडिट कार्ड ऑफर्स के लिए अप्लाई करने में दिलचस्पी दिखाई थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और आपकी प्री-अप्रूवल चेक कर लूं। क्या आपके पास एक मिनट बात करने का समय है?`;
-      default:
-        return `${greetingStart}मैं ${moduleName} से बात कर रही हूँ। आपने हमारे प्रीमियम ऑप्शन्स और लिस्टिंग्स में दिलचस्पी दिखाई थी, तो मैंने सोचा कि आपको क्विक डिटेल्स शेयर कर दूँ और कुछ बेसिक इन्फॉर्मेशन ले लूँ। क्या आपके पास एक मिनट बात करने का समय है?`;
-    }
-  } else {
-    const greetingStart = name ? `Hello ${name}! ` : `Hello there! `;
-    switch (moduleType) {
-      case 'loan':
-        return `${greetingStart}This is Sara calling from ${moduleName}. I noticed you were looking for premium loan solutions, and I wanted to quickly touch base to share our customized interest rates and help with your application. Do you have a brief moment?`;
-      case 'credit_card':
-        return `${greetingStart}This is Sara calling from ${moduleName}. I wanted to quickly follow up on your interest in our premium credit card offers with exclusive benefits and high limits. Do you have a brief moment to see if we can get you pre-approved?`;
-      default:
-        return `${greetingStart}This is Sara calling from ${moduleName}. I'm following up on your interest in our premium listings and wanted to quickly share the details with you. Do you have a quick minute?`;
-    }
-  }
-};
+
 
 /**
  * Handle call completion data extraction
@@ -206,26 +179,40 @@ export function setupMediaStreamWebSocket(server = null) {
                 // Initialize TTS based on explicit provider preference
                 const ttsProvider = call.ttsProvider || 'google';
                 const isBrowserSandbox = req.url.includes('/browser');
+                const optimizeFor = call.optimizeFor || 'latency';
+                const isHighFidelity = isBrowserSandbox && optimizeFor === 'quality';
                 
                 let tts;
                 if (ttsProvider === 'sarvam') {
-                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isBrowserSandbox);
+                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isHighFidelity, optimizeFor);
+                } else if (ttsProvider === 'cartesia') {
+                    tts = new StreamingCartesiaTTS(call.selectedVoice || '47c38ca4-5f35-497b-b1a3-415245fb35e1', isHighFidelity, optimizeFor);
                 } else if (ttsProvider === 'deepgram') {
-                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isBrowserSandbox);
+                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isHighFidelity);
                 } else {
-                    tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA', isBrowserSandbox);
+                    tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA', isHighFidelity);
                 }
                 sessionData.tts = tts;
 
                 logger.info(`TTS Initialized: [Voice: ${call.selectedVoice || 'DEFAULT'}] [Lang: ${call.selectedLanguage || 'en-IN'}] [Provider: ${ttsProvider}]`);
 
                 // Set up TTS audio output handler
-                tts.on('audio', (audioBase64) => {
+                tts.on('audio', (audioData) => {
                   if (ws.readyState === ws.OPEN && streamSid) {
+                    let payload = audioData;
+                    let encoding = 'mulaw';
+                    let sampleRate = 8000;
+                    
+                    if (typeof audioData === 'object' && audioData.payload) {
+                        payload = audioData.payload;
+                        encoding = audioData.encoding || 'mulaw';
+                        sampleRate = audioData.sampleRate || 8000;
+                    }
+
                     ws.send(JSON.stringify({
                       event: 'media',
                       streamSid: streamSid,
-                      media: { payload: audioBase64 }
+                      media: { payload: payload, encoding, sampleRate }
                     }));
                   }
                 });
@@ -274,20 +261,14 @@ export function setupMediaStreamWebSocket(server = null) {
                 deepgramService = new DeepgramService();
                 const sttLanguage = STT_LANG_MAP[call.selectedLanguage?.toLowerCase()] || 'en-US';
                 
-                // Deepgram Nova-3 is required for regional Indic languages.
-                const requiresNova3 = ['bn', 'te', 'mr', 'ta', 'kn', 'gu', 'ml', 'or', 'pa'].includes(sttLanguage);
-                
-                let sttModel;
-                if (requiresNova3) {
-                    sttModel = 'nova-3';
-                } else if (sttLanguage === 'en-US' || sttLanguage === 'en-IN') {
+                let sttModel = undefined;
+                if (sttLanguage === 'en-US' || sttLanguage === 'en-IN') {
                     sttModel = process.env.DEEPGRAM_MODEL || 'nova-2-phonecall';
-                } else {
-                    sttModel = 'nova-2'; // For 'hi'
+                } else if (sttLanguage === 'hi') {
+                    sttModel = 'nova-2';
                 }
-
-                await deepgramService.createLiveConnection({
-                  model: sttModel,
+                
+                const connectionConfig = {
                   language: sttLanguage,
                   smart_format: true,
                   interim_results: true,
@@ -297,7 +278,12 @@ export function setupMediaStreamWebSocket(server = null) {
                   channels: 1,
                   punctuate: true,
                   keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2']
-                });
+                };
+                if (sttModel) {
+                  connectionConfig.model = sttModel;
+                }
+
+                await deepgramService.createLiveConnection(connectionConfig);
 
                 // Initialize buffered transcript array
                 sessionData.bufferedTranscript = [];
@@ -310,23 +296,31 @@ export function setupMediaStreamWebSocket(server = null) {
 
                   // Barge-in logic
                   if (data.text.trim().length > 1) {
-                    logger.info(`Barge-in detected: "${data.text.trim()}"`);
-                    if (ws.readyState === ws.OPEN) {
-                      ws.send(JSON.stringify({ event: 'clear', streamSid }));
-                    }
-                    if (sessionData.tts) {
-                      sessionData.tts.audioQueue = []; 
-                      sessionData.tts.textBuffer = '';
-                    }
-                    if (sessionData.callHandler) {
-                      sessionData.callHandler.state = 'IDLE';
-                    }
-                    
-                    // Clear debouncer state to avoid cross-talk processing
-                    sessionData.bufferedTranscript = [];
-                    if (sessionData.silenceTimeout) {
-                      clearTimeout(sessionData.silenceTimeout);
-                      sessionData.silenceTimeout = null;
+                    if (sessionData.callHandler && sessionData.callHandler.isGreeting) {
+                      logger.debug(`Ignoring barge-in during initial greeting sequence: "${data.text.trim()}"`);
+                    } else {
+                      logger.info(`Barge-in detected: "${data.text.trim()}"`);
+                      if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: 'clear', streamSid }));
+                      }
+                      if (sessionData.tts) {
+                        if (typeof sessionData.tts.clear === 'function') {
+                          sessionData.tts.clear();
+                        } else {
+                          sessionData.tts.audioQueue = []; 
+                          sessionData.tts.textBuffer = '';
+                        }
+                      }
+                      if (sessionData.callHandler) {
+                        sessionData.callHandler.state = 'IDLE';
+                      }
+                      
+                      // Clear debouncer state to avoid cross-talk processing
+                      sessionData.bufferedTranscript = [];
+                      if (sessionData.silenceTimeout) {
+                        clearTimeout(sessionData.silenceTimeout);
+                        sessionData.silenceTimeout = null;
+                      }
                     }
                   }
 
@@ -389,23 +383,10 @@ export function setupMediaStreamWebSocket(server = null) {
                   streamSid
                 });
 
-                // Trigger initial AI greeting
+                // Trigger initial AI greeting dynamically
                 try {
-                  const moduleName = callHandler.module?.name || 'Voicely';
-                  const moduleType = callHandler.module?.type || 'custom';
-                  
-                  const welcomeMessage = generateOutboundGreeting(
-                    call.customerName,
-                    moduleName,
-                    moduleType,
-                    call.selectedLanguage
-                  );
-                  
-                  logger.info(`Sending intelligent outbound greeting: "${welcomeMessage}"`);
-                  callHandler.chatHistory += `AI: ${welcomeMessage}\n`;
-                  tts.processTextChunk(welcomeMessage);
-                  tts.flush();
-                  broadcastTranscriptUpdate(call._id.toString(), { source: 'ai', text: welcomeMessage, isFinal: true });
+                  logger.info(`Triggering intelligent outbound greeting for ${call.customerName}`);
+                  await callHandler.startGreeting();
                 } catch (introErr) {
                   logger.error('Failed to send initial greeting', introErr);
                 }

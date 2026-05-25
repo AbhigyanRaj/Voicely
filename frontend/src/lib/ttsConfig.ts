@@ -1,3 +1,18 @@
+export const CARTESIA_LANGUAGES = [
+  { code: 'en-US', label: 'English (Cartesia)' }
+];
+
+export const CARTESIA_VOICES: Record<string, { id: string; label: string; gender: string; desc?: string }[]> = {
+  'en-US': [
+    { id: '47c38ca4-5f35-497b-b1a3-415245fb35e1', label: 'Daniel', gender: 'Male', desc: 'Modern Assistant' },
+    { id: '820a3788-2b37-4d21-847a-b65d8a68c99a', label: 'Tyler', gender: 'Male', desc: 'Friendly Salesman' },
+    { id: 'a7a59115-2425-4192-844c-1e98ec7d6877', label: 'Amber', gender: 'Female', desc: 'Warm Support Agent' },
+    { id: 'f9fc912e-52f0-448a-8bfa-47e9ca75f25a', label: 'Marilyn', gender: 'Female', desc: 'Explainer' },
+    { id: '79a125e8-cd45-4c13-8a67-188112f4dd22', label: 'Kendra', gender: 'Female', desc: 'Smooth Communicator' }
+  ]
+};
+
+// Keeping Google/Deepgram exports so we don't break other files implicitly, but they won't be used in the Sandbox UI.
 export const GOOGLE_LANGUAGES = [
   { code: 'en-IN', label: 'English (India)' },
   { code: 'hi-IN', label: 'Hindi' }
@@ -20,30 +35,12 @@ export const GOOGLE_VOICES: Record<string, { id: string; label: string; gender: 
 
 export const SARVAM_LANGUAGES = [
   { code: 'en-IN', label: 'English' },
-  { code: 'hi-IN', label: 'Hindi' },
-  { code: 'bn-IN', label: 'Bengali' },
-  { code: 'gu-IN', label: 'Gujarati' },
-  { code: 'kn-IN', label: 'Kannada' },
-  { code: 'ml-IN', label: 'Malayalam' },
-  { code: 'mr-IN', label: 'Marathi' },
-  { code: 'or-IN', label: 'Oriya' },
-  { code: 'pa-IN', label: 'Punjabi' },
-  { code: 'ta-IN', label: 'Tamil' },
-  { code: 'te-IN', label: 'Telugu' }
+  { code: 'hi-IN', label: 'Hindi' }
 ];
 
 export const SARVAM_VOICES: Record<string, { id: string; label: string; gender: string; demo?: string; desc?: string }[]> = {
   'en-IN': [{ id: 'arya', label: 'Arya', gender: 'Female', desc: 'English Speaker' }, { id: 'karun', label: 'Karun', gender: 'Male', desc: 'English Speaker' }],
-  'hi-IN': [{ id: 'anushka', label: 'Anushka', gender: 'Female', desc: 'Hindi Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Hindi Speaker' }],
-  'bn-IN': [{ id: 'manisha', label: 'Manisha', gender: 'Female', desc: 'Bengali Speaker' }, { id: 'hitesh', label: 'Hitesh', gender: 'Male', desc: 'Bengali Speaker' }],
-  'gu-IN': [{ id: 'vidya', label: 'Vidya', gender: 'Female', desc: 'Gujarati Speaker' }, { id: 'karun', label: 'Karun', gender: 'Male', desc: 'Gujarati Speaker' }],
-  'kn-IN': [{ id: 'arya', label: 'Arya', gender: 'Female', desc: 'Kannada Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Kannada Speaker' }],
-  'ml-IN': [{ id: 'anushka', label: 'Anushka', gender: 'Female', desc: 'Malayalam Speaker' }, { id: 'hitesh', label: 'Hitesh', gender: 'Male', desc: 'Malayalam Speaker' }],
-  'mr-IN': [{ id: 'manisha', label: 'Manisha', gender: 'Female', desc: 'Marathi Speaker' }, { id: 'karun', label: 'Karun', gender: 'Male', desc: 'Marathi Speaker' }],
-  'or-IN': [{ id: 'vidya', label: 'Vidya', gender: 'Female', desc: 'Oriya Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Oriya Speaker' }],
-  'pa-IN': [{ id: 'arya', label: 'Arya', gender: 'Female', desc: 'Punjabi Speaker' }, { id: 'karun', label: 'Karun', gender: 'Male', desc: 'Punjabi Speaker' }],
-  'ta-IN': [{ id: 'anushka', label: 'Anushka', gender: 'Female', desc: 'Tamil Speaker' }, { id: 'hitesh', label: 'Hitesh', gender: 'Male', desc: 'Tamil Speaker' }],
-  'te-IN': [{ id: 'manisha', label: 'Manisha', gender: 'Female', desc: 'Telugu Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Telugu Speaker' }]
+  'hi-IN': [{ id: 'anushka', label: 'Anushka', gender: 'Female', desc: 'Hindi Speaker' }, { id: 'abhilash', label: 'Abhilash', gender: 'Male', desc: 'Hindi Speaker' }]
 };
 
 export const DEEPGRAM_LANGUAGES = [

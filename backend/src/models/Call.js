@@ -91,8 +91,13 @@ const callSchema = new mongoose.Schema({
   },
   ttsProvider: {
     type: String,
-    enum: ['google', 'sarvam'],
+    enum: ['google', 'sarvam', 'cartesia', 'deepgram'],
     default: 'google',
+  },
+  optimizeFor: {
+    type: String,
+    enum: ['latency', 'quality'],
+    default: 'latency'
   },
   currentStep: {
     type: Number,

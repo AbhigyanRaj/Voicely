@@ -3,15 +3,15 @@ import EventEmitter from 'events';
 import logger from '../utils/logger.js';
 
 class DeepgramService extends EventEmitter {
-  constructor() {
+  constructor(apiKey = null) {
     super();
     this.deepgram = null;
     this.connection = null;
     this.isConnected = false;
-    this.apiKey = process.env.DEEPGRAM_API_KEY;
+    this.apiKey = apiKey || process.env.DEEPGRAM_API_KEY;
 
     if (!this.apiKey) {
-      logger.error('DEEPGRAM_API_KEY not found in environment variables');
+      logger.error('DEEPGRAM_API_KEY not found in environment variables and no API key provided');
     }
   }
 

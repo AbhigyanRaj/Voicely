@@ -36,6 +36,12 @@ class StreamingDeepgramTTS extends EventEmitter {
         }
     }
 
+    clear() {
+        this.audioQueue = [];
+        this.textBuffer = '';
+        this.isProcessing = false;
+    }
+
     /**
      * Split buffer on sentence boundaries or natural breath pauses (connective words, commas)
      */
@@ -100,6 +106,9 @@ class StreamingDeepgramTTS extends EventEmitter {
                 const textToSynth = this.audioQueue.shift();
                 try {
                     const audioBase64 = await this._synthesizeMulaw(textToSynth);
+                    
+                    if (!this.isProcessing) break;
+                    
                     if (audioBase64) {
                         this.emit('audio', audioBase64);
                     }
@@ -131,14 +140,19 @@ class StreamingDeepgramTTS extends EventEmitter {
 
             const sampleRate = this.isWebCall ? 16000 : 8000;
             // Deepgram Aura speaks raw mulaw direct natively
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
             const response = await fetch(`https://api.deepgram.com/v1/speak?model=${modelId}&encoding=mulaw&sample_rate=${sampleRate}&container=none`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${this.apiKey}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ text: text })
+                body: JSON.stringify({ text: text }),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errorText = await response.text();

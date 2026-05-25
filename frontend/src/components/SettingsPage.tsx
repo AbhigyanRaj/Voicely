@@ -17,10 +17,13 @@ import {
   Plus,
   X,
   Activity,
-  ShieldCheck
+  ShieldCheck,
+  Phone
 } from "lucide-react";
 import * as auth from "../lib/auth";
 import { api } from "../lib/api";
+import { getProviders, saveProvider } from "../lib/settings";
+import type { ProviderCredential } from "../lib/settings";
 import { useAuth } from "../contexts/AuthContext";
 
 interface UserSettings {
@@ -63,8 +66,10 @@ interface Workspace {
 
 const SettingsPage: React.FC = () => {
   const { user, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'general' | 'ai_voice' | 'integrations' | 'usage_billing'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'ai_voice' | 'providers' | 'integrations'>('general');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [providers, setProviders] = useState<ProviderCredential[]>([]);
+  const [twilioForm, setTwilioForm] = useState({ accountSid: '', authToken: '', phoneNumber: '' });
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [newWorkspaceCategory, setNewWorkspaceCategory] = useState<'real_estate' | 'medical' | 'startup' | 'ecommerce'>('startup');
@@ -104,9 +109,34 @@ const SettingsPage: React.FC = () => {
   const handleSaveSettings = async () => {
     setLoading(true);
     // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (activeTab === 'providers') {
+      try {
+        await saveProvider('twilio', twilioForm.accountSid, twilioForm.authToken, twilioForm.phoneNumber);
+        // show success maybe?
+      } catch (error) {
+        console.error('Failed to save provider', error);
+      }
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
     setLoading(false);
-    // Show success message
+  };
+
+  const fetchProviders = async () => {
+    try {
+      const p = await getProviders();
+      setProviders(p);
+      const twilioProvider = p.find(x => x.providerName === 'twilio');
+      if (twilioProvider) {
+        setTwilioForm({
+          accountSid: twilioProvider.credentials.accountSid || '',
+          authToken: '********',
+          phoneNumber: twilioProvider.credentials.phoneNumber || ''
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch providers', error);
+    }
   };
 
   const fetchWorkspaces = async () => {
@@ -159,6 +189,7 @@ const SettingsPage: React.FC = () => {
 
   React.useEffect(() => {
     fetchWorkspaces();
+    fetchProviders();
   }, []);
 
   const handleSignOut = async () => {
@@ -172,8 +203,8 @@ const SettingsPage: React.FC = () => {
   const tabs = [
     { id: 'general', label: 'General', icon: User },
     { id: 'ai_voice', label: 'AI & Voice', icon: Volume2 },
+    { id: 'providers', label: 'Call Providers', icon: Phone },
     { id: 'integrations', label: 'Integrations', icon: Send },
-    { id: 'usage_billing', label: 'Usage & Billing', icon: CreditCard },
   ];
 
   const handleGenerateTelegramCode = async () => {
@@ -384,6 +415,113 @@ const SettingsPage: React.FC = () => {
     </div>
   );
 
+  const renderProvidersTab = () => (
+    <div className="space-y-6">
+      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
+        <div className="flex items-center gap-4 mb-8">
+          <div className="p-3 bg-blue-500/20 rounded-2xl">
+            <Phone className="w-6 h-6 text-blue-400" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">Call Providers</h3>
+            <p className="text-zinc-400 text-sm">Configure your Twilio or Exotel accounts</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Twilio */}
+          <div className="p-6 bg-zinc-800/20 border border-white/5 rounded-2xl">
+            <h4 className="text-zinc-200 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span> Twilio
+            </h4>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Account SID</label>
+                <input
+                  type="text"
+                  value={twilioForm.accountSid}
+                  onChange={e => setTwilioForm(prev => ({...prev, accountSid: e.target.value}))}
+                  placeholder="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Auth Token</label>
+                <input
+                  type="password"
+                  value={twilioForm.authToken}
+                  onChange={e => setTwilioForm(prev => ({...prev, authToken: e.target.value}))}
+                  placeholder="Enter Auth Token"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">Twilio Phone Number</label>
+                <input
+                  type="text"
+                  value={twilioForm.phoneNumber}
+                  onChange={e => setTwilioForm(prev => ({...prev, phoneNumber: e.target.value}))}
+                  placeholder="+1234567890"
+                  className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Plivo (Coming Soon) */}
+          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-4 right-4">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+            </div>
+            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500 opacity-50"></span> Plivo
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">Auth ID</label>
+                <input disabled type="text" placeholder="MAYxxxxxxxxxxxxxxxxxx" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* Exotel (Coming Soon) */}
+          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-4 right-4">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+            </div>
+            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-500 opacity-50"></span> Exotel
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">API Key</label>
+                <input disabled type="text" placeholder="Enter Exotel API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* Vonage (Coming Soon) */}
+          <div className="p-6 bg-zinc-800/10 border border-white/5 rounded-2xl opacity-60 pointer-events-none relative overflow-hidden">
+            <div className="absolute top-4 right-4">
+              <Badge variant="outline" className="text-zinc-400 border-zinc-700 bg-zinc-900/50">Coming Soon</Badge>
+            </div>
+            <h4 className="text-zinc-400 text-sm font-bold uppercase mb-4 tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-500 opacity-50"></span> Vonage
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-2 block">API Key</label>
+                <input disabled type="text" placeholder="Enter Vonage API Key" className="w-full bg-zinc-950/50 border border-zinc-800/50 px-4 py-3 rounded-xl text-zinc-600 text-sm" />
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </Card>
+    </div>
+  );
+
   const renderIntegrationsTab = () => (
     <div className="space-y-6">
       <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl">
@@ -463,51 +601,12 @@ const SettingsPage: React.FC = () => {
     </div>
   );
 
-  const renderUsageBillingTab = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-6 rounded-3xl">
-          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Available Tokens</p>
-          <div className="text-3xl font-bold text-white mb-4">{user?.tokens || 0}</div>
-          <Button className="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-2xl">Top Up</Button>
-        </Card>
-        
-        <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-6 rounded-3xl">
-          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Active Plan</p>
-          <div className="text-3xl font-bold text-white mb-4 capitalize">{typeof user?.subscription === 'string' ? user.subscription : user?.subscription?.tier || 'Free'}</div>
-          <Button variant="outline" className="w-full border-zinc-800 text-zinc-400 hover:text-white rounded-2xl">Manage</Button>
-        </Card>
-
-        <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-6 rounded-3xl">
-          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Calls Made</p>
-          <div className="text-3xl font-bold text-white mb-4">{user?.totalCallsMade || 0}</div>
-          <p className="text-[10px] text-zinc-500 font-medium">Lifetime usage</p>
-        </Card>
-      </div>
-
-      <Card className="bg-zinc-900/40 backdrop-blur-xl border-zinc-800 p-8 rounded-3xl border-dashed opacity-75">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-indigo-500/20 rounded-2xl">
-              <BarChart3 className="w-6 h-6 text-indigo-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-zinc-200">Detailed Invoicing</h3>
-              <p className="text-zinc-500 text-sm italic">Download monthly tax invoices and usage reports</p>
-            </div>
-          </div>
-          <Badge variant="outline" className="text-zinc-600 border-zinc-800">Soon</Badge>
-        </div>
-      </Card>
-    </div>
-  );
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'general': return renderGeneralTab();
       case 'ai_voice': return renderAIVoiceTab();
+      case 'providers': return renderProvidersTab();
       case 'integrations': return renderIntegrationsTab();
-      case 'usage_billing': return renderUsageBillingTab();
       default: return renderGeneralTab();
     }
   };

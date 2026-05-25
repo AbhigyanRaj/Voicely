@@ -88,11 +88,11 @@ export const initiateCall = async (req, res) => {
  */
 export const initiateBrowserSandboxCall = async (req, res) => {
     try {
-        const { moduleId, customerName, selectedVoice, selectedLanguage, ttsProvider } = req.body;
+        const { moduleId, customerName, selectedVoice, selectedLanguage, ttsProvider, optimizeFor } = req.body;
         const userId = req.user ? req.user._id : null;
         const workspaceId = req.user && req.user.currentWorkspace ? req.user.currentWorkspace._id : null;
 
-        logger.info(`Browser Sandbox Call Request: [Customer: ${customerName}] [Module: ${moduleId}]`);
+        logger.info(`Browser Sandbox Call Request: [Customer: ${customerName}] [Module: ${moduleId}] [OptimizeFor: ${optimizeFor}]`);
 
         if (!customerName || !moduleId) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -131,6 +131,7 @@ export const initiateBrowserSandboxCall = async (req, res) => {
             selectedVoice: finalVoice,
             selectedLanguage: finalLanguage,
             ttsProvider: finalProvider,
+            optimizeFor: optimizeFor || 'latency',
             status: 'ringing', // Start as ringing to simulate standard flow
             currentStep: 0,
             source: 'web'
@@ -179,17 +180,47 @@ export const handleCallWebhook = async (req, res) => {
         twiml.pause({ length: 3600 });
 
         const twimlString = twiml.toString();
-        logger.debug(`Generated TwiML for Call ${CallSid}:`, twimlString);
-        res.type('text/xml').send(twimlString);
+        logger.info(`Live streaming call initiated for [CallSid: ${req.body.CallSid}]`);
+        res.type('text/xml');
+        res.send(twiml.toString());
     } catch (error) {
-        logger.error('Call webhook processing error', error);
-        try {
-            const errorTwiml = createTwiMLResponse();
-            errorTwiml.say('Sorry, a technical error occurred on our server.');
-            res.type('text/xml').send(errorTwiml.toString());
-        } catch (innerError) {
-            res.status(500).send('Error');
+        logger.error(`Error in handleCallWebhook: ${error.message}`);
+        res.status(500).send('Internal Server Error');
+    }
+};
+
+export const handleDeveloperCallWebhook = async (req, res) => {
+    try {
+        const { developerKeyId, prompt } = req.query;
+        
+        if (!developerKeyId) {
+            throw new Error('Developer Key ID is missing');
         }
+
+        const publicUrl = process.env.NGROK_URL || process.env.BASE_URL;
+        // Connect to the generic live stream. We can use the same /api/streams/twilio 
+        // endpoint. The stream endpoint expects some headers to know the context.
+        // We will pass the developerKeyId as a header so the streamingCallHandler knows
+        // to use the developer's config.
+        const twiml = new twilio.twiml.VoiceResponse();
+        
+        const connect = twiml.connect();
+        const stream = connect.stream({
+            url: `wss://${publicUrl.replace(/^https?:\/\//, '')}/api/streams/twilio`,
+            track: 'inbound_track'
+        });
+        
+        // Pass parameters as custom parameters in the stream
+        stream.parameter({ name: 'developerKeyId', value: developerKeyId });
+        stream.parameter({ name: 'prompt', value: prompt || '' });
+        stream.parameter({ name: 'isDeveloperCall', value: 'true' });
+
+        logger.info(`Live developer streaming call initiated for [CallSid: ${req.body.CallSid}] with [KeyId: ${developerKeyId}]`);
+        res.type('text/xml');
+        res.send(twiml.toString());
+    } catch (error) {
+        logger.error(`Error in handleDeveloperCallWebhook: ${error.message}`);
+        res.status(500).send('Internal Server Error');
     }
 };
 

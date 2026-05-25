@@ -8,10 +8,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { 
   SARVAM_LANGUAGES, 
   SARVAM_VOICES,
-  DEEPGRAM_LANGUAGES,
-  DEEPGRAM_VOICES,
-  GOOGLE_LANGUAGES,
-  GOOGLE_VOICES
+  CARTESIA_LANGUAGES,
+  CARTESIA_VOICES
 } from "../lib/ttsConfig";
 
 export const DEMO_AGENTS = [
@@ -61,9 +59,10 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [customerName, setCustomerName] = useState<string>("Aditya");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("hi-IN");
-  const [selectedVoice, setSelectedVoice] = useState<string>("anushka");
-  const [ttsProvider, setTtsProvider] = useState<string>("sarvam");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
+  const [selectedVoice, setSelectedVoice] = useState<string>("47c38ca4-5f35-497b-b1a3-415245fb35e1");
+  const [ttsProvider, setTtsProvider] = useState<string>("cartesia");
+  const [optimizeFor, setOptimizeFor] = useState<'latency' | 'quality'>('latency');
 
   // Sync selected voice list when selectedModuleId changes
   useEffect(() => {
@@ -81,10 +80,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     let availableVoices = [];
     if (ttsProvider === 'sarvam') {
       availableVoices = SARVAM_VOICES[selectedLanguage] || [];
-    } else if (ttsProvider === 'deepgram') {
-      availableVoices = DEEPGRAM_VOICES[selectedLanguage] || [];
     } else {
-      availableVoices = GOOGLE_VOICES[selectedLanguage] || [];
+      availableVoices = CARTESIA_VOICES[selectedLanguage] || [];
     }
 
     if (availableVoices.length > 0) {
@@ -100,10 +97,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState<boolean>(false);
-  
-  // Post-call state
-  const [pollingAnalysis, setPollingAnalysis] = useState<boolean>(false);
-  const [analyzedCall, setAnalyzedCall] = useState<any>(null);
 
   // Audio nodes and socket references
   const streamWsRef = useRef<WebSocket | null>(null);
@@ -144,7 +137,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       setStage('setup');
       setTranscript([]);
       setCallRecord(null);
-      setAnalyzedCall(null);
     }
   }, [open]);
 
@@ -254,7 +246,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   };
 
   // Play audio payload
-  const playAudioChunk = (base64Payload: string) => {
+  const playAudioChunk = (base64Payload: string, encoding: string = 'mulaw', sampleRate: number = 8000) => {
     const audioContext = audioContextRef.current;
     if (!audioContext) return;
 
@@ -266,10 +258,20 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Convert mu-law to float32 linear
-    const float32Data = new Float32Array(len);
-    for (let i = 0; i < len; i++) {
-      float32Data[i] = muLawToLinear(bytes[i]);
+    let float32Data;
+    if (encoding === 'pcm_f32le') {
+      // 32-bit Float PCM linear
+      const float32View = new Float32Array(bytes.buffer);
+      float32Data = new Float32Array(float32View.length);
+      for (let i = 0; i < float32View.length; i++) {
+        float32Data[i] = float32View[i];
+      }
+    } else {
+      // Convert mu-law to float32 linear
+      float32Data = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        float32Data[i] = muLawToLinear(bytes[i]);
+      }
     }
 
     // Play sequential chunks smoothly
@@ -277,8 +279,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       audioContext.resume();
     }
 
-    // Wideband HD Voice 16kHz for sandbox testing
-    const activeSampleRate = ttsProvider ? 16000 : 8000;
+    // Wideband HD Voice 16kHz for sandbox testing, or 24kHz for Cartesia HD
+    const activeSampleRate = sampleRate;
     const audioBuffer = audioContext.createBuffer(1, float32Data.length, activeSampleRate);
     audioBuffer.getChannelData(0).set(float32Data);
 
@@ -372,7 +374,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
           customerName: customerName.trim(),
           selectedVoice,
           selectedLanguage,
-          ttsProvider
+          ttsProvider,
+          optimizeFor
         })
       });
 
@@ -421,7 +424,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         try {
           const msg = JSON.parse(event.data);
           if (msg.event === "media") {
-            playAudioChunk(msg.media.payload);
+            playAudioChunk(msg.media.payload, msg.media.encoding, msg.media.sampleRate);
           } else if (msg.event === "clear") {
             // Barge-in request: purge queued audios
             nextStartTimeRef.current = 0;
@@ -491,12 +494,11 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     setIsAgentSpeaking(false);
   };
 
-  // Terminate active Sandbox call and poll for analysis
   const handleEndSandboxCall = async () => {
     if (!callRecord) return;
     
-    setStage('ended');
-    setPollingAnalysis(true);
+    // Return immediately to setup stage instead of polling for analysis
+    setStage('setup');
 
     // Send final stop command
     if (streamWsRef.current && streamWsRef.current.readyState === WebSocket.OPEN) {
@@ -504,42 +506,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     }
 
     cleanupSession();
-
-    // Start polling DB call details to fetch Gemini transcript evaluations
-    let attempts = 0;
-    const token = getStoredToken();
-
-    pollingIntervalRef.current = setInterval(async () => {
-      attempts++;
-      try {
-        const response = await fetch(`${getApiBaseUrl()}/calls/${callRecord._id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-
-        if (response.ok) {
-          const resData = await response.json();
-          const call = resData.call;
-          
-          // Poll until Gemini evaluation results populate
-          if (call.status === 'completed' || call.evaluation?.result) {
-            setAnalyzedCall(call);
-            setPollingAnalysis(false);
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
-        }
-      } catch (err) {
-        console.error("Error polling post-call analysis:", err);
-      }
-
-      if (attempts >= 15) {
-        setPollingAnalysis(false);
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    }, 2000);
   };
 
   const logger = (msg: string) => {
@@ -606,22 +572,22 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     <button
                       type="button"
                       onClick={() => {
+                        setAgentSource('custom');
                         if (user) {
-                          setAgentSource('custom');
                           if (modules.length > 0) {
                             setSelectedModuleId(modules[0]._id || modules[0].id || "");
                           } else {
                             setSelectedModuleId("");
                           }
                         } else {
-                          alert("Please sign in or create an account to test your own custom voice agents.");
+                          setSelectedModuleId("");
                         }
                       }}
                       className={`flex-1 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
                         agentSource === 'custom' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-                      } ${!user ? 'opacity-50' : ''}`}
+                      }`}
                     >
-                      Custom Agents
+                      Test Your Agent
                     </button>
                   </div>
 
@@ -668,7 +634,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     </div>
                   ) : (
                     <div>
-                      {modules.length === 0 ? (
+                      {!user ? (
+                        <div className="p-5 bg-blue-500/5 border border-blue-500/10 rounded-xl text-center">
+                          <Shield className="w-6 h-6 text-blue-500 mx-auto mb-3 opacity-80" />
+                          <h4 className="text-white text-sm font-semibold mb-1">Sign in required</h4>
+                          <p className="text-xs text-zinc-400">Please sign in or create an account to build and test your own custom voice agents.</p>
+                        </div>
+                      ) : modules.length === 0 ? (
                         <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-xl text-center">
                           <AlertCircle className="w-5 h-5 text-amber-500 mx-auto mb-2" />
                           <p className="text-xs text-zinc-500">No active Voice Agents found. Please create a module first.</p>
@@ -716,18 +688,64 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 <div className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                      Optimization Mode
+                    </label>
+                    <div className="flex bg-zinc-950/40 rounded-xl p-1 border border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => setOptimizeFor('latency')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                          optimizeFor === 'latency' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                         Speed (Low Latency)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOptimizeFor('quality')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                          optimizeFor === 'quality' ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                         Quality (Natural Flow)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
                       TTS Engine
                     </label>
-                    <div className="h-10 bg-zinc-950/40 border border-white/5 rounded-xl px-4 flex items-center text-zinc-300 text-xs font-semibold select-none">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse"></div>
-                      Sarvam AI (Regional Indian Languages)
+                    <div className="relative">
+                      <select
+                        value={ttsProvider}
+                        onChange={(e) => {
+                          setTtsProvider(e.target.value);
+                          if (e.target.value === 'cartesia') {
+                            setSelectedLanguage('en-US');
+                            setSelectedVoice('47c38ca4-5f35-497b-b1a3-415245fb35e1'); // Daniel
+                          } else {
+                            setSelectedLanguage('hi-IN');
+                            setSelectedVoice('anushka');
+                          }
+                        }}
+                        className="w-full h-10 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
+                      >
+                        <option value="cartesia" className="bg-zinc-900 text-white">Cartesia (English & Int.)</option>
+                        <option value="sarvam" className="bg-zinc-900 text-white">Sarvam AI (Indian Languages - Under Development)</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
-                        Language Override
+                        Language Options Available
                       </label>
                       <div className="relative">
                         <select
@@ -735,7 +753,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           onChange={(e) => setSelectedLanguage(e.target.value)}
                           className="w-full h-10 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
                         >
-                          {SARVAM_LANGUAGES.map((l) => (
+                          {(ttsProvider === 'sarvam' ? SARVAM_LANGUAGES : CARTESIA_LANGUAGES).map((l) => (
                             <option key={l.code} value={l.code} className="bg-zinc-900 text-white font-semibold">
                               {l.label}
                             </option>
@@ -751,7 +769,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
-                        Voice Override
+                        Voice Options Available
                       </label>
                       <div className="relative">
                         <select
@@ -759,7 +777,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           onChange={(e) => setSelectedVoice(e.target.value)}
                           className="w-full h-10 bg-zinc-950/60 border border-white/10 rounded-xl px-4 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all appearance-none cursor-pointer font-semibold"
                         >
-                          {(SARVAM_VOICES[selectedLanguage] || []).map((v) => (
+                          {((ttsProvider === 'sarvam' ? SARVAM_VOICES : CARTESIA_VOICES)[selectedLanguage] || []).map((v) => (
                             <option key={v.id} value={v.id} className="bg-zinc-900 text-white font-semibold">
                               {v.label} ({v.gender})
                             </option>
@@ -777,7 +795,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
                 <Button
                   onClick={handleStartSandbox}
-                  disabled={modules.length === 0 || submittingCall}
+                  disabled={!selectedModuleId || submittingCall || (agentSource === 'custom' && !user)}
                   className="w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-full tracking-wider text-xs uppercase shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 mt-2"
                 >
                   <Play className="w-4 h-4 mr-2" />
@@ -878,128 +896,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 className="h-9 px-5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-full text-[10px] sm:text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"
               >
                 <Square className="w-3.5 h-3.5" />
-                END & ANALYZE SESSION
+                END SESSION
               </Button>
             </div>
           </div>
         )}
 
-        {/* Post-Call Analysis Report Stage */}
-        {stage === 'ended' && (
-          <div className="p-6 sm:p-8 flex flex-col space-y-6 max-h-[550px] overflow-y-auto">
-            {pollingAnalysis ? (
-              <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-                <div className="text-center">
-                  <h3 className="text-sm font-semibold text-white mb-1">Performing Gemini Analysis</h3>
-                  <p className="text-[11px] text-zinc-500">Evaluating responses and intent thresholds...</p>
-                </div>
-              </div>
-            ) : analyzedCall ? (
-              <div className="space-y-6">
-                
-                {/* Call Analytics Header Cards */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-4 bg-zinc-950/50 border border-white/5 rounded-2xl text-center">
-                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
-                      Qualification Result
-                    </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
-                      ['YES', 'INTERESTED', 'QUALIFIED'].includes(analyzedCall.evaluation?.result)
-                        ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                    }`}>
-                      {analyzedCall.evaluation?.result || 'N/A'}
-                    </span>
-                  </div>
 
-                  <div className="p-4 bg-zinc-950/50 border border-white/5 rounded-2xl text-center">
-                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
-                      Sentiment
-                    </span>
-                    <span className="text-[10px] font-bold text-blue-400">
-                      {analyzedCall.evaluation?.analysis?.sentiment || 'Neutral'}
-                    </span>
-                  </div>
-
-                  <div className="p-4 bg-zinc-950/50 border border-white/5 rounded-2xl text-center">
-                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
-                      Duration
-                    </span>
-                    <span className="text-[10px] font-bold text-white">
-                      {analyzedCall.duration || 0}s
-                    </span>
-                  </div>
-                </div>
-
-                {/* Post-Call Intelligent Summary */}
-                <div className="p-4 bg-zinc-950/50 border border-white/5 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-2 text-zinc-300 font-semibold text-xs">
-                    <Sparkles className="w-4 h-4 text-blue-500" />
-                    Intelligent Gemini Summary
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-normal">
-                    {analyzedCall.summary || "No post-call summary generated."}
-                  </p>
-                </div>
-
-                {/* Question-Answer Responses Extracted */}
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                    Extracted Lead Answers
-                  </span>
-                  
-                  {Object.keys(analyzedCall.responses || {}).length === 0 ? (
-                    <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-2xl text-center text-xs text-zinc-500 font-medium">
-                      No matching answer responses extracted from this conversation.
-                    </div>
-                  ) : (
-                    <div className="bg-zinc-950/40 border border-white/5 rounded-2xl overflow-hidden divide-y divide-white/5">
-                      {Object.entries(analyzedCall.responses).map(([question, answer]: any, idx) => (
-                        <div key={idx} className="p-4 flex flex-col space-y-1">
-                          <span className="text-[9px] font-semibold text-zinc-500 uppercase tracking-widest">
-                            Q: {question}
-                          </span>
-                          <span className="text-xs text-white font-medium">
-                            A: {answer || 'No answer extracted'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() => setStage('setup')}
-                    className="flex-1 h-10 bg-white/5 hover:bg-white/10 text-white font-bold rounded-full text-xs uppercase tracking-wider transition-all border border-white/10"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Restart Simulation
-                  </Button>
-                  <Button
-                    onClick={onClose}
-                    className="flex-1 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-full text-xs uppercase tracking-wider transition-all shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)]"
-                  >
-                    Exit Sandbox
-                  </Button>
-                </div>
-
-              </div>
-            ) : (
-              <div className="p-10 flex flex-col items-center justify-center space-y-3">
-                <AlertCircle className="w-8 h-8 text-amber-500" />
-                <span className="text-xs text-zinc-500 text-center leading-relaxed">
-                  We encountered a slight delay retrieving the analysis from MongoDB. You can find the full transcript and Gemini qualification inside the Lead Timeline or Analytics tab.
-                </span>
-                <Button onClick={() => setStage('setup')} className="h-9 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-full mt-2 text-xs font-semibold">
-                  Restart Sandbox
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
 
       </div>
     </div>

@@ -3,30 +3,45 @@ import logger from '../utils/logger.js';
 
 const { validateRequest } = twilio;
 
-// Lazy initialization of Twilio client
-let client = null;
+import ProviderCredential from '../models/ProviderCredential.js';
+import { decrypt } from '../utils/crypto.js';
 
-const getTwilioClient = () => {
-  if (!client) {
+// Lazy initialization of the system default Twilio client (fallback)
+let systemClient = null;
+
+export const getSystemTwilioClient = () => {
+  if (!systemClient) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-    logger.debug('Twilio Client Initialization requested');
 
     if (!accountSid || !authToken) {
       logger.error('Twilio credentials not found in environment');
       throw new Error('Twilio credentials not found. Please check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in your .env file');
     }
-
-    try {
-      client = twilio(accountSid, authToken);
-      logger.success('Twilio client initialized successfully');
-    } catch (error) {
-      logger.error('Error creating Twilio client', error);
-      throw error;
-    }
+    systemClient = twilio(accountSid, authToken);
   }
-  return client;
+  return systemClient;
+};
+
+/**
+ * Get dynamic Twilio client using user's saved credentials.
+ * If user hasn't set one up, it can optionally throw an error or fall back.
+ */
+export const getTwilioClientForUser = async (userId) => {
+  const provider = await ProviderCredential.findOne({ userId, providerName: 'twilio', isDefault: true });
+  
+  if (!provider) {
+    throw new Error('You have not configured your Twilio API credentials. Please add them in Settings.');
+  }
+
+  const accountSid = provider.credentials.accountSid;
+  const rawAuthToken = decrypt(provider.credentials.authToken);
+
+  if (!accountSid || !rawAuthToken) {
+    throw new Error('Invalid Twilio credentials saved. Please re-enter them in Settings.');
+  }
+
+  return twilio(accountSid, rawAuthToken);
 };
 
 /**
@@ -85,14 +100,16 @@ export const validateTwilioRequest = (req, res, next) => {
   }
 };
 
-/**
- * Make an outbound call using Twilio
- */
-export const makeCall = async (to, from, webhookUrl, statusCallbackUrl = null) => {
+export const makeCall = async (to, from, webhookUrl, statusCallbackUrl = null, userId = null) => {
   try {
     logger.info(`Initiating Twilio call to ${to} from ${from}`);
 
-    const twilioClient = getTwilioClient();
+    let twilioClient;
+    if (userId) {
+      twilioClient = await getTwilioClientForUser(userId);
+    } else {
+      twilioClient = getSystemTwilioClient();
+    }
 
     const callOptions = {
       method: 'POST',
@@ -151,5 +168,5 @@ export const generateTwilioTTS = async (text, voiceType = 'RACHEL', audioType = 
   }
 };
 
-export { getTwilioClient as twilioClient };
-export default getTwilioClient;
+export { getSystemTwilioClient as twilioClient };
+export default getSystemTwilioClient;

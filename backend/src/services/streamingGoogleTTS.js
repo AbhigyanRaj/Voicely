@@ -37,6 +37,12 @@ class StreamingGoogleTTS extends EventEmitter {
         }
     }
 
+    clear() {
+        this.audioQueue = [];
+        this.textBuffer = '';
+        this.isProcessing = false;
+    }
+
     /**
      * Split buffer on sentence boundaries or natural pauses (commas)
      */
@@ -102,6 +108,8 @@ class StreamingGoogleTTS extends EventEmitter {
                 try {
                     const audioBase64 = await this._synthesizeMulaw(textToSynth);
 
+                    if (!this.isProcessing) break;
+
                     if (audioBase64) {
                         // Emit the base64 encoded mulaw audio ready for Twilio
                         this.emit('audio', audioBase64);
@@ -141,11 +149,16 @@ class StreamingGoogleTTS extends EventEmitter {
         const endpoint = 'https://texttospeech.googleapis.com/v1/text:synthesize';
         logger.debug(`Synthesizing with voice ${this.voice.id} (${this.voice.language}): "${text.substring(0, 30)}..."`);
         
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
         const response = await fetch(`${endpoint}?key=${this.apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorData = await response.json();

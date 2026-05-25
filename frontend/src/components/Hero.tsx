@@ -7,6 +7,7 @@ import ContactUploader from "./ContactUploader";
 import { VoiceSandbox } from "./VoiceSandbox";
 import { useAuth } from "../contexts/AuthContext";
 import * as auth from "../lib/auth";
+import { getApiBaseUrl } from "../lib/api";
 
 const featureData = [
   {
@@ -39,6 +40,36 @@ const Hero: React.FC = () => {
 
   const { user, signIn, emailRegister, emailLogin, loading } = useAuth();
   
+  const [visitorCount, setVisitorCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Generate or retrieve visitor ID
+    let visitorId = localStorage.getItem('voicely_visitor_id');
+    if (!visitorId) {
+      visitorId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      localStorage.setItem('voicely_visitor_id', visitorId);
+    }
+
+    // Fetch and track visitor count
+    const trackVisitor = async () => {
+      try {
+        const url = `${getApiBaseUrl()}/stats/visitors`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: visitorId })
+        });
+        const data = await response.json();
+        if (data.success && data.count) {
+          setVisitorCount(data.count);
+        }
+      } catch (err) {
+        console.error('Failed to track visitor:', err);
+      }
+    };
+    trackVisitor();
+  }, []);
+
   const loadUserModules = useCallback(async () => {
     if (!user) return;
     try {
@@ -127,11 +158,20 @@ const Hero: React.FC = () => {
         
         <div className="relative z-10 max-w-5xl mx-auto w-full flex flex-col items-center">
           {/* Version Badge */}
-          <div className="mb-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
-              <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-400">Platform v2.0 Live</span>
+          <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 flex flex-col items-center gap-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/[0.08] backdrop-blur-md transition-colors hover:bg-white/[0.04]">
+              <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
+              <span className="text-[10px] font-medium tracking-[0.15em] uppercase text-zinc-400">Platform v2.0 Live</span>
             </div>
+            
+            {/* Visitor Counter */}
+            {visitorCount !== null && (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-transparent border border-white/[0.05] backdrop-blur-md">
+                <span className="text-[10px] font-medium tracking-[0.1em] uppercase text-zinc-500">
+                  <span className="text-zinc-200 mr-1">{visitorCount}</span> PIONEERS HAVE TESTED THIS
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Main Title */}
@@ -139,8 +179,8 @@ const Hero: React.FC = () => {
             Voicely
           </h1>
           
-          <p className="text-xs sm:text-sm md:text-base mb-8 max-w-lg mx-auto font-medium text-zinc-400 leading-relaxed px-4 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
-            Advanced AI Voice Automation for Seamless Lead Qualification and Intelligent Journey Management.
+          <p className="text-sm sm:text-base md:text-lg mb-8 max-w-xl mx-auto font-medium text-zinc-400 leading-relaxed px-4 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
+            Ship real-time AI voice agents in minutes. The open-source, ultra-low latency Speech-to-Speech gateway built for modern developers.
           </p>
           
           {/* Refined Action Area */}
@@ -164,13 +204,15 @@ const Hero: React.FC = () => {
               </Button>
             ) : null}
             
-            <button 
-              onClick={() => setModalOpen(true)}
-              className="group flex items-center justify-center gap-2 text-zinc-500 hover:text-white transition-colors font-bold text-xs uppercase tracking-widest px-4 h-11 w-full sm:w-auto"
-            >
-              START A CALL
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </button>
+            {user && (
+              <button 
+                onClick={() => setModalOpen(true)}
+                className="group flex items-center justify-center gap-2 text-zinc-500 hover:text-white transition-colors font-bold text-xs uppercase tracking-widest px-4 h-11 w-full sm:w-auto"
+              >
+                START A CALL
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </button>
+            )}
           </div>
 
           {/* Integrated Feature Bar */}

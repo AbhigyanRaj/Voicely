@@ -1,6 +1,7 @@
 import { generateGoogleTTS, GOOGLE_VOICES, getGoogleTTSUsage } from '../config/googleTTS.js';
 import { generateSpeech as generateElevenLabsTTS, VOICES as ELEVENLABS_VOICES } from '../config/elevenlabs.js';
 import SarvamService from './sarvamService.js';
+import CartesiaService from './cartesiaService.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -178,11 +179,13 @@ export async function generateHybridTTS(text, voiceType = DEFAULT_VOICE, options
 
   // Try services in priority order
   const availableServices = [];
-  if (provider === 'google') availableServices.push('google');
+  if (provider === 'cartesia') availableServices.push('cartesia');
   if (provider === 'sarvam') availableServices.push('sarvam');
   if (provider === 'elevenlabs') availableServices.push('elevenlabs');
+  if (provider === 'google') availableServices.push('google');
 
   // Add fallbacks that aren't the primary
+  if (provider !== 'cartesia' && process.env.CARTESIA_API_KEY) availableServices.push('cartesia');
   if (provider !== 'sarvam' && process.env.SARVAM_API_KEY) availableServices.push('sarvam');
   if (provider !== 'elevenlabs' && process.env.ELEVENLABS_API_KEY) availableServices.push('elevenlabs');
   if (provider !== 'google' && process.env.GOOGLE_TTS_API_KEY) availableServices.push('google');
@@ -195,7 +198,17 @@ export async function generateHybridTTS(text, voiceType = DEFAULT_VOICE, options
     try {
       logger.debug(`TTS Attempt: ${service.toUpperCase()}`);
 
-      if (service === 'google') {
+      if (service === 'cartesia') {
+        const result = await tryCartesiaTTS(text, voiceType, languageCode);
+        if (result.success) {
+          const saved = saveToCache(cacheHash, result.audioBuffer);
+          return {
+            ...result,
+            ...saved,
+            cached: false
+          };
+        }
+      } else if (service === 'google') {
         const result = await tryGoogleTTS(text, voiceType);
         if (result.success) {
           const saved = saveToCache(cacheHash, result.audioBuffer);
@@ -282,6 +295,31 @@ async function tryGoogleTTS(text, voiceType) {
     };
   } catch (error) {
     logger.error('Google TTS integration error', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Try Cartesia TTS
+ */
+async function tryCartesiaTTS(text, voiceType, languageCode) {
+  try {
+    const cartesiaVoice = VOICE_MAPPING[voiceType]?.cartesia || voiceType; // Fallback to raw string
+    
+    const cartesia = new CartesiaService();
+    const audioBuffer = await cartesia.synthesizeMulaw(text, languageCode, cartesiaVoice);
+    
+    if (!audioBuffer) throw new Error('Null audio returned from Cartesia');
+    
+    return {
+      success: true,
+      source: 'cartesia',
+      audioBuffer: audioBuffer,
+      voiceUsed: cartesiaVoice,
+      service: 'Cartesia AI'
+    };
+  } catch (error) {
+    logger.error('Cartesia TTS integration error', error);
     return { success: false, error: error.message };
   }
 }
