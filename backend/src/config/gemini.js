@@ -95,7 +95,7 @@ export const parseChatHistoryToMessages = (systemPrompt, chatHistory) => {
 export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk) => {
   const apiKey = process.env.GROQ_API_KEY;
   const start = performance.now();
-  logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: llama-3.1-8b-instant)`);
+  logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: llama-3.3-70b-versatile)`);
 
   try {
     const messages = parseChatHistoryToMessages(systemPrompt, chatHistory);
@@ -107,7 +107,7 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         messages: messages,
         stream: true,
         max_tokens: 150,
@@ -191,7 +191,7 @@ export const transcribeAudio = async (audioBuffer) => {
   }
 };
 
-export const callGroqChatCompletion = async (messages, modelName = 'llama-3.1-70b-versatile') => {
+export const callGroqChatCompletion = async (messages, modelName = 'llama-3.3-70b-versatile') => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("GROQ_API_KEY not configured in environment");
@@ -226,7 +226,7 @@ export const generateSummary = async (text) => {
     const messages = [
       { role: 'user', content: `You are a helpful assistant that summarizes call transcripts and extracts key insights. Please summarize this call transcript and extract key insights: ${text}` }
     ];
-    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
+    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
   } catch (error) {
     logger.error('Summary generation error via Groq', error);
     throw error;
@@ -249,7 +249,7 @@ export const extractAnswersJSON = async (chatHistory, questions) => {
     Return a strictly valid JSON object where the keys are the exact questions as strings, and the values are the user's extracted answers. If a question was not answered or wasn't reached, set the value to "Not answered". Do NOT include Markdown blocks like \`\`\`json. Return only the raw JSON string.`;
 
     const messages = [{ role: 'user', content: prompt }];
-    let responseText = await callGroqChatCompletion(messages, 'llama-3.1-70b-versatile');
+    let responseText = await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
 
     // Strip markdown formatting if LLM included it despite instructions
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
@@ -285,7 +285,7 @@ You are a loan decisioning expert. Respond only with YES, NO, or INVESTIGATION_R
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
+    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
   } catch (error) {
     logger.error('Loan evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
@@ -317,7 +317,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
+    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
   } catch (error) {
     logger.error('Credit card evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
@@ -330,7 +330,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 export const analyzeResponseWithGemini = async (prompt) => {
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.1-8b-instant');
+    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
   } catch (error) {
     logger.error('Groq analysis error', error);
     throw error;
@@ -419,7 +419,7 @@ Rules:
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    let responseText = await callGroqChatCompletion(messages, 'llama-3.1-70b-versatile');
+    let responseText = await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
     
     // Safety: Strip markdown
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();

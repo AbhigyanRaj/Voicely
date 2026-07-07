@@ -169,7 +169,7 @@ export const setupDeveloperStreamWebSocket = () => {
             if (developerKey.pipelineConfig.ttsModel === 'sarvam-aura') {
                 tts = new StreamingSarvamTTS('en-IN', 'anushka', false, 'latency'); // Sarvam doesn't use API key via param right now
             } else {
-                tts = new StreamingCartesiaTTS('47c38ca4-5f35-497b-b1a3-415245fb35e1', false, 'latency', ttsKey);
+                tts = new StreamingCartesiaTTS('79a125e8-cd45-4c13-8a67-188112f4dd22', false, 'latency', ttsKey);
             }
 
             tts.on('audio', (audioData) => {

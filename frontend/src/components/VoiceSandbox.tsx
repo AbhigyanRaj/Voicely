@@ -13,29 +13,29 @@ import {
 } from "../lib/ttsConfig";
 
 export const DEMO_AGENTS = [
-  {
-    id: 'demo-agent-enthusiastic',
-    name: 'Aarav (Enthusiastic Promoter)',
-    emotion: 'Enthusiastic',
-    description: 'High energy, fast-paced representative promoting premium plans with dynamic voice modulation.'
+  { 
+    id: 'demo-agent-calm', 
+    name: 'Sarah (Calm Corporate Advisor)', 
+    emotion: 'CALM/PROFESSIONAL', 
+    description: 'Steady, reassuring corporate advisor collecting processes and latency challenges.' 
   },
-  {
-    id: 'demo-agent-calm',
-    name: 'Ananya (Calm Corporate Advisor)',
-    emotion: 'Calm/Professional',
-    description: 'Steady, reassuring corporate advisor collecting processes and latency challenges.'
+  { 
+    id: 'demo-agent-enthusiastic', 
+    name: 'Alex (Enthusiastic Promoter)', 
+    emotion: 'HIGH ENERGY', 
+    description: 'Upbeat startup representative qualifying your business needs and volume.' 
   },
-  {
-    id: 'demo-agent-feedback',
-    name: 'Rohan (Feedback Collector)',
-    emotion: 'Success Specialist',
-    description: 'Friendly Success Agent seeking user reviews on IVR and phone line frustrations.'
+  { 
+    id: 'demo-agent-feedback', 
+    name: 'David (Feedback Collector)', 
+    emotion: 'WARM/LISTENING', 
+    description: 'Friendly success specialist asking about your IVR frustrations and feedback.' 
   },
-  {
-    id: 'demo-agent-support',
-    name: 'Kavya (Friendly Customer Support)',
-    emotion: 'Friendly/Empathetic',
-    description: 'Empathetic Customer Success agent resolving login and account issues.'
+  { 
+    id: 'demo-agent-support', 
+    name: 'Emma (Friendly Customer Support)', 
+    emotion: 'EMPATHETIC', 
+    description: 'Helpful support agent walking through troubleshooting steps with care.' 
   }
 ];
 
@@ -56,11 +56,11 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [agentSource, setAgentSource] = useState<'demo' | 'custom'>('demo');
   const [modules, setModules] = useState<VoiceModule[]>([]);
   const [selectedModuleId, setSelectedModuleId] = useState<string>("demo-agent-calm");
-  const [customerName, setCustomerName] = useState<string>("Aditya");
+  const [customerName, setCustomerName] = useState<string>("Steve");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
-  const [selectedVoice, setSelectedVoice] = useState<string>("47c38ca4-5f35-497b-b1a3-415245fb35e1");
+  const [selectedVoice, setSelectedVoice] = useState<string>("79a125e8-cd45-4c13-8a67-188112f4dd22");
   const [ttsProvider, setTtsProvider] = useState<string>("cartesia");
   const [optimizeFor, setOptimizeFor] = useState<'latency' | 'quality'>('latency');
 
@@ -69,20 +69,16 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     if (selectedModuleId && modules.length > 0) {
       const activeMod = modules.find(m => (m._id || m.id) === selectedModuleId);
       if (activeMod) {
-        setSelectedVoice(activeMod.selectedVoice || "anushka");
-        setSelectedLanguage(activeMod.selectedLanguage || "hi-IN");
+        setTtsProvider(activeMod.ttsProvider || "cartesia");
+        setSelectedLanguage(activeMod.selectedLanguage || "en-US");
+        setSelectedVoice(activeMod.selectedVoice || "79a125e8-cd45-4c13-8a67-188112f4dd22");
       }
     }
   }, [selectedModuleId, modules]);
 
   // Adjust default voice if selected language or ttsProvider is manually overridden
   useEffect(() => {
-    let availableVoices = [];
-    if (ttsProvider === 'sarvam') {
-      availableVoices = SARVAM_VOICES[selectedLanguage] || [];
-    } else {
-      availableVoices = CARTESIA_VOICES[selectedLanguage] || [];
-    }
+    let availableVoices = (ttsProvider === 'cartesia' ? CARTESIA_VOICES : SARVAM_VOICES)[selectedLanguage] || [];
 
     if (availableVoices.length > 0) {
       const match = availableVoices.find(v => v.id === selectedVoice);
@@ -94,7 +90,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   
   // Active session state
   const [callRecord, setCallRecord] = useState<any>(null);
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [finalizedTranscripts, setFinalizedTranscripts] = useState<TranscriptLine[]>([]);
+  const [activePartials, setActivePartials] = useState<Record<string, TranscriptLine>>({});
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState<boolean>(false);
 
@@ -103,9 +100,10 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const liveCallWsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const processorNodeRef = useRef<any>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextStartTimeRef = useRef<number>(0);
+  const activeAudioNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const pollingIntervalRef = useRef<any>(null);
 
@@ -135,7 +133,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       setAgentSource('demo');
       setSelectedModuleId('demo-agent-calm');
       setStage('setup');
-      setTranscript([]);
+      setFinalizedTranscripts([]);
+      setActivePartials({});
       setCallRecord(null);
     }
   }, [open]);
@@ -143,7 +142,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   // Scroll transcript to bottom
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript]);
+  }, [finalizedTranscripts, activePartials]);
 
   // Clean up audio & sockets on unmount or close
   useEffect(() => {
@@ -187,24 +186,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     }
   };
 
-  // Mu-law and PCM algorithms
-  const linearToMuLaw = (sample: number): number => {
-    const BIAS = 0x84;
-    const CLIP = 32635;
-    const sign = sample < 0 ? 0x80 : 0;
-    if (sample < 0) sample = -sample;
-    if (sample > CLIP) sample = CLIP;
-    sample = (sample + BIAS) >> 0;
-
-    let exponent = 7;
-    for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; expMask >>= 1) {
-      exponent--;
-    }
-    const mantissa = (sample >> (exponent + 3)) & 0x0f;
-    const byte = ~(sign | (exponent << 4) | mantissa);
-    return byte & 0xff;
-  };
-
   const muLawToLinear = (muLawByte: number): number => {
     muLawByte = ~muLawByte;
     const sign = muLawByte & 0x80 ? -1 : 1;
@@ -213,26 +194,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     let sample = ((mantissa << 3) + 132) << exponent;
     sample -= 132;
     return (sign * sample) / 32768.0;
-  };
-
-  const downsampleAndEncodeMulaw = (
-    inputBuffer: Float32Array,
-    inputSampleRate: number,
-    outputSampleRate: number
-  ): Uint8Array => {
-    const compressionRatio = inputSampleRate / outputSampleRate;
-    const outputLength = Math.round(inputBuffer.length / compressionRatio);
-    const outputBuffer = new Uint8Array(outputLength);
-
-    for (let i = 0; i < outputLength; i++) {
-      const inputIndex = Math.round(i * compressionRatio);
-      let sample = inputBuffer[inputIndex];
-      if (sample < -1) sample = -1;
-      if (sample > 1) sample = 1;
-      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-      outputBuffer[i] = linearToMuLaw(intSample);
-    }
-    return outputBuffer;
   };
 
   const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
@@ -295,7 +256,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
     // Indicate that the agent is currently speaking
     setIsAgentSpeaking(true);
+    
+    activeAudioNodesRef.current.push(source);
+    
     source.onended = () => {
+      // Remove from active nodes
+      activeAudioNodesRef.current = activeAudioNodesRef.current.filter(n => n !== source);
+      
       // Check if sound finished
       if (audioContext.currentTime >= nextStartTimeRef.current - 0.08) {
         setIsAgentSpeaking(false);
@@ -310,25 +277,20 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const startAudioStreaming = async (callSid: string) => {
     try {
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 8000 });
       
       const audioContext = audioContextRef.current;
       sourceNodeRef.current = audioContext.createMediaStreamSource(mediaStreamRef.current);
       
-      // Processor node with mono channels
-      processorNodeRef.current = audioContext.createScriptProcessor(2048, 1, 1);
+      await audioContext.audioWorklet.addModule('/audio-processor.js');
+      processorNodeRef.current = new AudioWorkletNode(audioContext, 'audio-processor');
       
-      const inputSampleRate = audioContext.sampleRate;
-      const outputSampleRate = 8000;
-
-      processorNodeRef.current.onaudioprocess = (e) => {
+      processorNodeRef.current.port.onmessage = (e: MessageEvent) => {
         if (isMutedRef.current) return;
         const ws = streamWsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-        const inputData = e.inputBuffer.getChannelData(0);
-        const compressedData = downsampleAndEncodeMulaw(inputData, inputSampleRate, outputSampleRate);
-        const base64Audio = arrayBufferToBase64(compressedData.buffer);
+        const base64Audio = arrayBufferToBase64(e.data.buffer);
 
         ws.send(JSON.stringify({
           event: 'media',
@@ -354,7 +316,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
     setSubmittingCall(true);
     setStage('connecting');
-    setTranscript([]);
+    setFinalizedTranscripts([]);
+    setActivePartials({});
     setCallRecord(null);
 
     const token = getStoredToken();
@@ -427,6 +390,10 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
             playAudioChunk(msg.media.payload, msg.media.encoding, msg.media.sampleRate);
           } else if (msg.event === "clear") {
             // Barge-in request: purge queued audios
+            activeAudioNodesRef.current.forEach(node => {
+              try { node.stop(); } catch(e) {}
+            });
+            activeAudioNodesRef.current = [];
             nextStartTimeRef.current = 0;
             setIsAgentSpeaking(false);
           }
@@ -452,15 +419,20 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === "transcript_update") {
-            setTranscript((prev) => {
-              const text = msg.text;
-              const isFinal = msg.isFinal;
-              const source = msg.source; // 'user' | 'ai'
-
-              // Remove previous partials from same source
-              const filtered = prev.filter(item => !(item.source === source && !item.isFinal));
-              return [...filtered, { source, text, isFinal }];
-            });
+            const { text, isFinal, source } = msg;
+            if (isFinal) {
+              setFinalizedTranscripts(prev => [...prev, { source, text, isFinal: true }]);
+              setActivePartials(prev => {
+                const next = { ...prev };
+                delete next[source];
+                return next;
+              });
+            } else {
+              setActivePartials(prev => ({
+                ...prev,
+                [source]: { source, text, isFinal: false }
+              }));
+            }
           }
         } catch (err) {
           console.error("Transcript socket payload error:", err);
@@ -515,20 +487,21 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl max-h-[92vh] bg-[#0A0A0A] border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl relative z-10 flex flex-col my-4 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="w-full max-w-2xl max-h-[92vh] bg-[#0A0A0A] border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.8)] relative z-10 flex flex-col my-4 animate-in zoom-in-95 duration-300">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none"></div>
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-widest">
-              Voice Pipeline Sandbox
+        <div className="flex items-center justify-between border-b border-white/5 px-6 py-5 flex-shrink-0 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></div>
+            <h2 className="text-xs font-medium text-white tracking-wide">
+              Voice Sandbox
             </h2>
           </div>
           <button 
             onClick={onClose} 
-            className="text-zinc-400 hover:text-white transition-colors"
+            className="text-zinc-500 hover:text-white transition-colors relative z-10"
           >
             <X className="w-5 h-5" />
           </button>
@@ -536,31 +509,27 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
         {/* Setup Stage */}
         {stage === 'setup' && (
-          <div className="p-6 sm:p-8 flex flex-col space-y-6 overflow-y-auto">
-            <div className="text-center max-w-md mx-auto">
-              <h3 className="text-xl font-semibold text-white mb-2">Test Your Voice Pipeline</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Test conversation pathways, custom questions, and TTS configurations in real-time. No Twilio credits or hardware connectivity required.
-              </p>
-            </div>
-
+          <div className="p-8 sm:p-10 flex flex-col space-y-8 overflow-y-auto">
             {loadingModules ? (
               <div className="flex flex-col items-center justify-center py-10 space-y-3">
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                 <span className="text-xs text-zinc-500">Retrieving modules...</span>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div>
-                  <div className="flex bg-white/5 rounded-lg p-1 mb-4 border border-white/5">
+              <div className="flex flex-col space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Left Column */}
+                  <div className="space-y-5">
+                    <div>
+                  <div className="flex space-x-6 border-b border-white/10 pb-2 mb-6 relative z-10">
                     <button
                       type="button"
                       onClick={() => {
                         setAgentSource('demo');
                         setSelectedModuleId('demo-agent-calm');
                       }}
-                      className={`flex-1 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-all ${
-                        agentSource === 'demo' ? 'bg-[#1A1A1A] text-white border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                      className={`text-xs font-medium tracking-wide pb-2 border-b-2 transition-all -mb-[10px] ${
+                        agentSource === 'demo' ? 'text-white border-white' : 'text-zinc-500 border-transparent hover:text-zinc-300'
                       }`}
                     >
                       Demo Agents
@@ -579,25 +548,25 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           setSelectedModuleId("");
                         }
                       }}
-                      className={`flex-1 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-all ${
-                        agentSource === 'custom' ? 'bg-[#1A1A1A] text-white border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                      className={`text-xs font-medium tracking-wide pb-2 border-b-2 transition-all -mb-[10px] ${
+                        agentSource === 'custom' ? 'text-white border-white' : 'text-zinc-500 border-transparent hover:text-zinc-300'
                       }`}
                     >
                       Test Your Agent
                     </button>
                   </div>
 
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                  <label className="block text-xs font-medium text-zinc-400 mb-2 relative z-10">
                     Select Voice Agent
                   </label>
 
                   {agentSource === 'demo' ? (
-                    <div className="space-y-3">
+                    <div className="space-y-3 relative z-10">
                       <div className="relative">
                         <select
                           value={selectedModuleId}
                           onChange={(e) => setSelectedModuleId(e.target.value)}
-                          className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none cursor-pointer font-medium"
+                          className="w-full h-10 bg-transparent border-b border-white/10 px-0 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer font-light rounded-none"
                         >
                           {DEMO_AGENTS.map((d) => (
                             <option key={d.id} value={d.id} className="bg-[#0A0A0A] text-white">
@@ -605,7 +574,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                             </option>
                           ))}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                        <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-zinc-500">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                           </svg>
@@ -617,13 +586,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                         const currentDemo = DEMO_AGENTS.find(d => d.id === selectedModuleId);
                         if (!currentDemo) return null;
                         return (
-                          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl animate-in fade-in duration-300">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          <div className="pt-2 animate-in fade-in duration-300">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">
                                 {currentDemo.emotion}
                               </span>
                             </div>
-                            <p className="text-[10px] text-zinc-400 leading-normal">{currentDemo.description}</p>
+                            <p className="text-xs text-zinc-400 font-light leading-relaxed">{currentDemo.description}</p>
                           </div>
                         );
                       })()}
@@ -646,7 +615,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           <select
                             value={selectedModuleId}
                             onChange={(e) => setSelectedModuleId(e.target.value)}
-                            className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none cursor-pointer"
+                            className="w-full h-10 bg-transparent border-b border-white/10 px-0 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer font-light rounded-none"
                           >
                             {modules.map((m) => (
                               <option key={m._id || m.id} value={m._id || m.id} className="bg-[#0A0A0A] text-white">
@@ -654,7 +623,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                               </option>
                             ))}
                           </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-500">
+                          <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-zinc-500">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                             </svg>
@@ -663,35 +632,35 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                       )}
                     </div>
                   )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                    </div>
+                  </div>
+                  {/* Right Column */}
+                  <div className="space-y-5 relative z-10">
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-400 mb-2">
                     Your Name (Simulation)
                   </label>
                   <div className="relative flex items-center">
-                    <User className="absolute left-3 w-4 h-4 text-zinc-500" />
                     <input
                       type="text"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Aditiya"
-                      className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg pl-10 pr-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all"
+                      placeholder="Steve"
+                      className="w-full h-10 bg-transparent border-b border-white/10 px-0 text-white text-sm focus:outline-none focus:border-white transition-all placeholder:text-zinc-600 font-light rounded-none"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                      Optimization Mode
-                    </label>
-                    <div className="flex bg-white/5 rounded-lg p-1 border border-white/5">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-3">
+                    Optimization Mode
+                  </label>
+                    <div className="flex space-x-6">
                       <button
                         type="button"
                         onClick={() => setOptimizeFor('latency')}
-                        className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${
-                          optimizeFor === 'latency' ? 'bg-[#1A1A1A] text-blue-400 border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                        className={`text-xs font-light transition-all ${
+                          optimizeFor === 'latency' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                          Speed (Low Latency)
@@ -699,8 +668,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                       <button
                         type="button"
                         onClick={() => setOptimizeFor('quality')}
-                        className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${
-                          optimizeFor === 'quality' ? 'bg-[#1A1A1A] text-purple-400 border border-white/10 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                        className={`text-xs font-light transition-all ${
+                          optimizeFor === 'quality' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                          Quality (Natural Flow)
@@ -708,54 +677,26 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                      TTS Engine
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={ttsProvider}
-                        onChange={(e) => {
-                          setTtsProvider(e.target.value);
-                          if (e.target.value === 'cartesia') {
-                            setSelectedLanguage('en-US');
-                            setSelectedVoice('47c38ca4-5f35-497b-b1a3-415245fb35e1'); // Daniel
-                          } else {
-                            setSelectedLanguage('hi-IN');
-                            setSelectedVoice('anushka');
-                          }
-                        }}
-                        className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none cursor-pointer font-semibold"
-                      >
-                        <option value="cartesia" className="bg-[#0A0A0A] text-white">Cartesia (English & Int.)</option>
-                        <option value="sarvam" className="bg-[#0A0A0A] text-white">Sarvam AI (Indian Languages)</option>
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-500">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                     <div>
-                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                        Language Options Available
+                      <label className="block text-xs font-medium text-zinc-400 mb-2">
+                        Language
                       </label>
                       <div className="relative">
                         <select
                           value={selectedLanguage}
                           onChange={(e) => setSelectedLanguage(e.target.value)}
-                          className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none cursor-pointer font-semibold"
+                          className="w-full h-10 bg-transparent border-b border-white/10 px-0 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer font-light rounded-none"
                         >
-                          {(ttsProvider === 'sarvam' ? SARVAM_LANGUAGES : CARTESIA_LANGUAGES).map((l) => (
-                            <option key={l.code} value={l.code} className="bg-[#0A0A0A] text-white font-semibold">
+                          {(ttsProvider === 'cartesia' ? CARTESIA_LANGUAGES : SARVAM_LANGUAGES).map((l) => (
+                            <option key={l.code} value={l.code} className="bg-[#0A0A0A] text-white">
                               {l.label}
                             </option>
                           ))}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-500">
+                        <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-zinc-500">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                           </svg>
@@ -764,22 +705,22 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                        Voice Options Available
+                      <label className="block text-xs font-medium text-zinc-400 mb-2">
+                        Voice Options
                       </label>
                       <div className="relative">
                         <select
                           value={selectedVoice}
                           onChange={(e) => setSelectedVoice(e.target.value)}
-                          className="w-full h-10 bg-white/[0.03] border border-white/10 rounded-lg px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none cursor-pointer font-semibold"
+                          className="w-full h-10 bg-transparent border-b border-white/10 px-0 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer font-light rounded-none"
                         >
-                          {((ttsProvider === 'sarvam' ? SARVAM_VOICES : CARTESIA_VOICES)[selectedLanguage] || []).map((v) => (
-                            <option key={v.id} value={v.id} className="bg-[#0A0A0A] text-white font-semibold">
+                          {((ttsProvider === 'cartesia' ? CARTESIA_VOICES : SARVAM_VOICES)[selectedLanguage] || []).map((v) => (
+                            <option key={v.id} value={v.id} className="bg-[#0A0A0A] text-white">
                               {v.label} ({v.gender})
                             </option>
                           ))}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-500">
+                        <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-zinc-500">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                           </svg>
@@ -788,15 +729,17 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     </div>
                   </div>
                 </div>
+                </div>
 
-                <Button
-                  onClick={handleStartSandbox}
-                  disabled={!selectedModuleId || submittingCall || (agentSource === 'custom' && !user)}
-                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-full tracking-wider text-sm uppercase shadow-none transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 mt-4"
-                >
-                  <Play className="w-4 h-4 mr-2" />
-                  INITIATE LIVE SANDBOX
-                </Button>
+                <div className="pt-8 flex justify-end mt-4 relative z-10">
+                  <Button
+                    onClick={handleStartSandbox}
+                    disabled={!selectedModuleId || submittingCall || (agentSource === 'custom' && !user)}
+                    className="w-full sm:w-auto px-6 h-9 bg-white text-black font-medium rounded-md text-[13px] hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                  >
+                    Initiate Sandbox
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -804,28 +747,28 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
         {/* Connecting / Ringing Stage */}
         {stage === 'connecting' && (
-          <div className="p-10 flex flex-col items-center justify-center space-y-6">
+          <div className="p-12 flex flex-col items-center justify-center h-[500px] space-y-6 relative z-10">
             <div className="relative">
-              <div className="w-20 h-20 bg-blue-500/10 rounded-full animate-ping absolute"></div>
-              <div className="w-20 h-20 bg-indigo-500/20 border border-white/10 rounded-full flex items-center justify-center relative">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              <div className="w-20 h-20 bg-emerald-500/10 rounded-full animate-ping absolute"></div>
+              <div className="w-20 h-20 bg-emerald-500/20 border border-emerald-500/30 rounded-full flex items-center justify-center relative">
+                <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
               </div>
             </div>
             <div className="text-center">
               <h3 className="text-lg font-medium text-white mb-1">Bootstrapping Audio Pipeline</h3>
-              <p className="text-xs text-zinc-500">Allocating Deepgram transcriptions and Gemini Flash systems...</p>
+              <p className="text-xs text-zinc-400">Allocating Deepgram transcriptions and Gemini Flash systems...</p>
             </div>
           </div>
         )}
 
         {/* Active Connected Call Sandbox */}
         {stage === 'connected' && (
-          <div className="flex flex-col h-[500px]">
+          <div className="flex flex-col h-[500px] relative z-10">
             {/* Call Status Indicator bar */}
-            <div className="px-6 py-3 bg-zinc-950/40 border-b border-white/5 flex items-center justify-between">
+            <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-[10px] font-bold text-green-400 uppercase tracking-widest">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
                   LIVE INTERACTIVE CONNECTED
                 </span>
               </div>
@@ -839,8 +782,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
               
               {/* Dynamic Sound Wave Pulse sphere */}
               <div className="flex flex-col items-center justify-center py-6 relative">
-                <div className={`w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center transition-transform duration-300 ${isAgentSpeaking ? 'scale-125 bg-blue-500/20 border-blue-400/40 shadow-[0_0_30px_rgba(59,130,246,0.3)]' : ''}`}>
-                  <Mic className={`w-6 h-6 ${isMuted ? 'text-zinc-600' : 'text-blue-400 animate-pulse'}`} />
+                <div className={`w-16 h-16 rounded-full bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center transition-transform duration-300 ${isAgentSpeaking ? 'scale-125 bg-emerald-500/20 border-emerald-400/30 shadow-[0_0_30px_rgba(16,185,129,0.2)]' : ''}`}>
+                  <Mic className={`w-6 h-6 ${isMuted ? 'text-zinc-600' : 'text-emerald-400 animate-pulse'}`} />
                 </div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-widest mt-2">
                   {isAgentSpeaking ? 'Agent Speaking...' : isMuted ? 'Microphone Muted' : 'Agent Listening (Barge-In Available)'}
@@ -848,24 +791,24 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
               </div>
 
               {/* Live transcript window */}
-              <div className="flex-1 overflow-y-auto bg-zinc-950/60 border border-white/5 rounded-2xl p-4 space-y-3 flex flex-col">
-                {transcript.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-center p-6 text-zinc-600 text-xs font-medium">
-                    Please say hello to start speaking with the agent, or wait for the initial greeting.
+              <div className="flex-1 overflow-y-auto bg-black/40 border border-white/5 rounded-2xl p-4 space-y-3 flex flex-col relative z-10 backdrop-blur-md">
+                {finalizedTranscripts.length === 0 && Object.keys(activePartials).length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-center p-6 text-zinc-500 text-sm font-light">
+                    Start talking to the agent...
                   </div>
                 ) : (
-                  transcript.map((line, idx) => (
+                  [...finalizedTranscripts, ...Object.values(activePartials)].map((line, idx) => (
                     <div 
                       key={idx} 
                       className={`flex flex-col max-w-[80%] ${line.source === 'ai' ? 'self-start items-start' : 'self-end items-end'}`}
                     >
-                      <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest mb-1 px-1">
+                      <span className="text-[10px] font-medium text-zinc-500 mb-1 px-1">
                         {line.source === 'ai' ? 'Voice Agent' : customerName}
                       </span>
-                      <div className={`px-4 py-2.5 rounded-2xl text-xs leading-normal ${
+                      <div className={`px-4 py-2.5 rounded-2xl text-sm font-light leading-relaxed ${
                         line.source === 'ai' 
-                          ? 'bg-zinc-900 border border-white/5 text-white' 
-                          : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                          ? 'bg-white/5 border border-white/5 text-zinc-200 rounded-tl-sm' 
+                          : 'bg-white text-black shadow-sm rounded-tr-sm'
                       } ${!line.isFinal ? 'opacity-70 italic' : ''}`}>
                         {line.text}
                       </div>
@@ -877,11 +820,11 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
             </div>
 
             {/* Active call footer controls */}
-            <div className="px-6 py-4 bg-zinc-950/40 border-t border-white/5 flex items-center justify-between gap-4">
+            <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between gap-4 relative z-10">
               <Button
                 variant="outline"
                 onClick={() => setIsMuted(!isMuted)}
-                className={`h-9 px-4 rounded-full border-white/10 transition-all text-xs font-semibold ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                className={`h-9 px-4 rounded-full border-white/10 transition-all text-xs font-medium ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/20' : 'bg-white/5 text-white hover:bg-white/10'}`}
               >
                 {isMuted ? <MicOff className="w-3.5 h-3.5 mr-1.5" /> : <Mic className="w-3.5 h-3.5 mr-1.5" />}
                 {isMuted ? 'Muted' : 'Mute Mic'}
@@ -889,7 +832,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
               <Button
                 onClick={handleEndSandboxCall}
-                className="h-9 px-5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-full text-[10px] sm:text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"
+                className="h-9 px-5 bg-white hover:bg-zinc-200 text-black font-medium rounded-full text-[11px] uppercase tracking-wide transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
               >
                 <Square className="w-3.5 h-3.5" />
                 END SESSION

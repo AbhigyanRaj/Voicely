@@ -1,5 +1,16 @@
 import fetch from 'node-fetch';
+import https from 'https';
 import logger from '../utils/logger.js';
+
+// Global keep-alive agent to eliminate TLS handshake latency on first TTFB
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10000,
+  maxSockets: 50
+});
+
+// Warm up the TCP/TLS connection immediately on backend startup
+fetch('https://api.cartesia.ai/', { agent: httpsAgent }).catch(() => {});
 
 class CartesiaService {
   constructor(apiKey = null) {
@@ -28,7 +39,7 @@ class CartesiaService {
     }
 
     const payload = {
-      model_id: "sonic-english",
+      model_id: "sonic-3.5",
       transcript: text,
       voice: {
         mode: "id",
@@ -54,7 +65,7 @@ class CartesiaService {
     }
 
     const payload = {
-      model_id: "sonic-english",
+      model_id: "sonic-3.5",
       transcript: text,
       voice: {
         mode: "id",
@@ -76,6 +87,7 @@ class CartesiaService {
 
       const response = await fetch(this.apiUrl, {
         method: 'POST',
+        agent: httpsAgent,
         headers: {
           'X-API-Key': this.apiKey,
           'Cartesia-Version': this.version,

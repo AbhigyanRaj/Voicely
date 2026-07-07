@@ -135,8 +135,8 @@ CRUCIAL RULES:
       
       // Feed a special prompt to Gemini to get the first greeting
       const greetingPrompt = this.targetLanguageName.toLowerCase() === 'english'
-        ? `[NEW CALL STARTED - NO USER INPUT YET. PLEASE PROVIDE YOUR INITIAL OUTBOUND GREETING BASED ON THE PERSONA. INTRODUCE YOURSELF. RESPOND PURELY IN ENGLISH.]`
-        : `[NEW CALL STARTED - NO USER INPUT YET. PLEASE PROVIDE YOUR INITIAL OUTBOUND GREETING BASED ON THE PERSONA. INTRODUCE YOURSELF. RESPOND STRICTLY IN THE NATIVE SCRIPT OF ${this.targetLanguageName} WITHOUT ANY ENGLISH TRANSLATION.]`;
+        ? `[START_CONVERSATION] No user input yet. Please provide your initial outbound greeting based on the persona. Introduce yourself. Respond purely in English.`
+        : `[START_CONVERSATION] No user input yet. Please provide your initial outbound greeting based on the persona. Introduce yourself. Respond strictly in the native script of ${this.targetLanguageName} without any English translation.`;
 
       const greeting = await generateConversationalResponseStream(
         this.systemPrompt,

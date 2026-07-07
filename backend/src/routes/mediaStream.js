@@ -31,8 +31,21 @@ const handleCallCompletion = async (callSid, sessionData) => {
     const call = await Call.findOne({ twilioCallSid: callSid });
     if (!call || !sessionData.callHandler) return;
 
-    const module = await import('../models/Module.js').then(m => m.default.findById(call.moduleId));
-    if (!module) return;
+    let module;
+    if (call.demoAgentId) {
+      const { getDemoAgentModule } = await import('../config/demoAgents.js');
+      const demoModule = getDemoAgentModule(call.demoAgentId);
+      if (!demoModule) return;
+      module = {
+        name: demoModule.name,
+        type: 'custom',
+        systemPrompt: demoModule.systemPrompt,
+        questions: demoModule.questions || []
+      };
+    } else {
+      module = await import('../models/Module.js').then(m => m.default.findById(call.moduleId));
+      if (!module) return;
+    }
 
     logger.info(`Extracting JSON answers for call ${callSid}...`);
     // Extract questions array
@@ -186,7 +199,7 @@ export function setupMediaStreamWebSocket(server = null) {
                 if (ttsProvider === 'sarvam') {
                     tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isHighFidelity, optimizeFor);
                 } else if (ttsProvider === 'cartesia') {
-                    tts = new StreamingCartesiaTTS(call.selectedVoice || '47c38ca4-5f35-497b-b1a3-415245fb35e1', isHighFidelity, optimizeFor);
+                    tts = new StreamingCartesiaTTS(call.selectedVoice || '79a125e8-cd45-4c13-8a67-188112f4dd22', isHighFidelity, optimizeFor);
                 } else if (ttsProvider === 'deepgram') {
                     tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isHighFidelity);
                 } else {
@@ -383,13 +396,13 @@ export function setupMediaStreamWebSocket(server = null) {
                   streamSid
                 });
 
-                // Trigger initial AI greeting dynamically
-                try {
-                  logger.info(`Triggering intelligent outbound greeting for ${call.customerName}`);
-                  await callHandler.startGreeting();
-                } catch (introErr) {
-                  logger.error('Failed to send initial greeting', introErr);
-                }
+                // Trigger initial AI greeting dynamically (Disabled per user request)
+                // try {
+                //   logger.info(`Triggering intelligent outbound greeting for ${call.customerName}`);
+                //   await callHandler.startGreeting();
+                // } catch (introErr) {
+                //   logger.error('Failed to send initial greeting', introErr);
+                // }
               } else {
                 logger.error(`Critical Error: Call record not found for SID ${callSid} after multiple retries.`);
               }

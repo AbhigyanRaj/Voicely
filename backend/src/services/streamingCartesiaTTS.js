@@ -7,7 +7,7 @@ import logger from '../utils/logger.js';
  * MULAW audio for Twilio playback on sentence boundaries using Cartesia.
  */
 class StreamingCartesiaTTS extends EventEmitter {
-    constructor(voiceId = '47c38ca4-5f35-497b-b1a3-415245fb35e1', isWebCall = false, optimizeFor = 'latency', apiKey = null) {
+    constructor(voiceId = '79a125e8-cd45-4c13-8a67-188112f4dd22', isWebCall = false, optimizeFor = 'latency', apiKey = null) {
         super();
         this.voiceId = voiceId;
         this.isWebCall = isWebCall;
