@@ -112,6 +112,11 @@ export const setupDeveloperStreamWebSocket = () => {
     wss.on('connection', async (ws, request) => {
         logger.info(`New Developer S2S WebSocket connection request from ${request.socket.remoteAddress}`);
         
+        ws.isAlive = true;
+        ws.on('pong', () => {
+            ws.isAlive = true;
+        });
+
         let deepgramService = null;
         let tts = null;
 
@@ -234,6 +239,21 @@ export const setupDeveloperStreamWebSocket = () => {
             logger.error('Developer S2S Connection Error:', error);
             ws.close(1011, 'Internal Server Error');
         }
+    });
+
+    const interval = setInterval(() => {
+        wss.clients.forEach((ws) => {
+            if (ws.isAlive === false) {
+                logger.debug('Terminating dead Developer WS client');
+                return ws.terminate();
+            }
+            ws.isAlive = false;
+            ws.ping();
+        });
+    }, 30000);
+
+    wss.on('close', () => {
+        clearInterval(interval);
     });
 
     return wss;

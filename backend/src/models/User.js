@@ -28,6 +28,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  isAdmin: {
+    type: Boolean,
+    default: false,
+  },
   totalCallsMade: {
     type: Number,
     default: 0,
@@ -54,17 +58,7 @@ const userSchema = new mongoose.Schema({
     },
     lastResetAt: Date,
   },
-  telegram: {
-    chatId: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-    linkingCode: {
-      code: String,
-      expiresAt: Date,
-    },
-  },
+
   currentWorkspace: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Workspace',

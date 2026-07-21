@@ -1,24 +1,26 @@
 import Lead from '../models/Lead.js';
 import * as callService from './callService.js';
 import logger from '../utils/logger.js';
+import cron from 'node-cron';
 
-let schedulerInterval = null;
+let schedulerTask = null;
 
 /**
  * Initialize the call scheduler
  */
 export const initScheduler = () => {
-  if (schedulerInterval) return;
+  if (schedulerTask) return;
 
-  logger.info('Call Scheduler initialized (Polling every 30s)');
+  logger.info('Call Scheduler initialized (Running every 30 seconds via cron)');
   
-  schedulerInterval = setInterval(async () => {
+  // Runs every 30 seconds
+  schedulerTask = cron.schedule('*/30 * * * * *', async () => {
     try {
       await processDueCalls();
     } catch (err) {
       logger.error('Error in processDueCalls check:', err);
     }
-  }, 30000); // Check every 30 seconds
+  });
 };
 
 /**
@@ -48,12 +50,17 @@ const processDueCalls = async () => {
         } catch (err) {
           logger.error(`Failed to trigger scheduled call for ${lead.phoneNumber}:`, err);
           // Retry logic could be added here
-          event.status = 'pending'; // Keep it pending for next cycle (careful with infinite loops)
+          event.status = 'pending'; // Keep it pending for next cycle
           event.metadata = { lastError: err.message, retryCount: (event.metadata?.retryCount || 0) + 1 };
           
           if (event.metadata.retryCount >= 3) {
             event.status = 'cancelled';
             logger.error(`Max retries reached for scheduled call to ${lead.phoneNumber}. Cancelling.`);
+          } else {
+            // Exponential backoff: retry in (retryCount * 5) minutes
+            const backoffMinutes = event.metadata.retryCount * 5;
+            event.time = new Date(Date.now() + backoffMinutes * 60000);
+            logger.info(`Scheduled call for ${lead.phoneNumber} failed. Retrying in ${backoffMinutes} minutes.`);
           }
         }
       }

@@ -1,20 +1,28 @@
 // Helper to get API base URL dynamically
 export const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
   if (process.env.NODE_ENV === 'production') {
-    return 'https://voicely-api-kbwf.onrender.com/api';
+    return 'https://voicely-api-kbwf.onrender.com/api/v1';
   }
   
   // In development, handle ngrok or localhost
   // If we're accessed via an ngrok URL (non-localhost), use that as the base
   if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-    return `${window.location.protocol}//${window.location.host}/api`;
+    return `${window.location.protocol}//${window.location.host}/api/v1`;
   }
   
-  return 'http://localhost:5001/api';
+  return 'http://localhost:5001/api/v1';
 };
 
 // Helper to get WS base URL dynamically
 export const getWsBaseUrl = () => {
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
+  }
+  
   const isProd = process.env.NODE_ENV === 'production';
   const apiHost = isProd ? 'voicely-api-kbwf.onrender.com' : 'localhost:5001';
   
@@ -29,16 +37,38 @@ export const getWsBaseUrl = () => {
 };
 
 
+// Centralized API Fetch Wrapper with Error Handling
+export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
+  const token = getStoredToken();
+  const res = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+  });
+
+  if (res.status === 401) {
+    // Token expired – auto sign out
+    removeStoredToken();
+    window.location.href = '/';
+    return;
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+};
+
 // API service for backend communication
 export const api = {
-  // Call management - AUTH REQUIRED
   async initiateCall(token: string, moduleId: string, phoneNumber: string, customerName: string, selectedVoice?: string, selectedLanguage?: string, ttsProvider?: string) {
-    const response = await fetch(`${getApiBaseUrl()}/calls/initiate`, {
+    return apiFetch('/calls/initiate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
       body: JSON.stringify({
         moduleId,
         phoneNumber,
@@ -48,35 +78,24 @@ export const api = {
         ttsProvider,
       }),
     });
-    return response.json();
   },
 
   async getCallDetails(token: string, callId: string) {
-    const response = await fetch(`${getApiBaseUrl()}/calls/${callId}`, {
+    return apiFetch(`/calls/${callId}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
     });
-    return response.json();
   },
 
   // Get call cost information - AUTH REQUIRED
   async getCallCostInfo(token: string) {
-    const response = await fetch(`${getApiBaseUrl()}/calls/cost-info`, {
+    return apiFetch('/calls/cost-info', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
     });
-    return response.json();
   },
 
   // Health check
   async healthCheck() {
-    const response = await fetch(`${getApiBaseUrl()}/health`);
-    return response.json();
+    return apiFetch('/health');
   },
 
   // Get call history - AUTH REQUIRED
@@ -88,62 +107,37 @@ export const api = {
     if (status) params.append('status', status);
     if (moduleId) params.append('moduleId', moduleId);
 
-    const response = await fetch(`${getApiBaseUrl()}/calls/history?${params}`, {
+    return apiFetch(`/calls/history?${params}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
     });
-    return response.json();
   },
 
   // Get user analytics - AUTH REQUIRED
   async getUserAnalytics(token: string) {
-    const response = await fetch(`${getApiBaseUrl()}/auth/analytics`, {
+    return apiFetch('/auth/analytics', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
     });
-    return response.json();
   },
 
   // Workspace management - AUTH REQUIRED
   async getWorkspaces(token: string) {
-    const response = await fetch(`${getApiBaseUrl()}/workspaces`, {
+    return apiFetch('/workspaces', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
     });
-    return response.json();
   },
 
   async createWorkspace(token: string, name: string, category: string) {
-    const response = await fetch(`${getApiBaseUrl()}/workspaces`, {
+    return apiFetch('/workspaces', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ name, category }),
     });
-    return response.json();
   },
 
   async switchWorkspace(token: string, workspaceId: string) {
-    const response = await fetch(`${getApiBaseUrl()}/workspaces/switch`, {
+    return apiFetch('/workspaces/switch', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ workspaceId }),
     });
-    return response.json();
   },
 };
 

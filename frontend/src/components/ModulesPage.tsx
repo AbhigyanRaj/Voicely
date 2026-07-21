@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import * as auth from "../lib/auth";
 import { useAuth } from "../contexts/AuthContext";
 import { Badge } from "./ui/badge";
 import { Plus, Layers, Trash2, Pencil, X, Check, Phone } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { useAppStore } from "../store/useAppStore";
+import { Skeleton } from "./ui/skeleton";
+import CreateModule from "./CreateModule";
 
 type QuestionObject = {
   question: string;
@@ -13,136 +18,134 @@ type QuestionObject = {
 
 const ModulesPage: React.FC = () => {
   const { user } = useAuth();
-  const [modules, setModules] = useState<auth.VoiceModule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { selectedModuleId: selectedModule, setSelectedModuleId: setSelectedModule } = useAppStore();
+  const [createModuleOpen, setCreateModuleOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
   const [editing, setEditing] = useState<{ [moduleId: string]: number | null }>({});
   const [editValue, setEditValue] = useState<{ [moduleId: string]: string }>({});
   const [newQuestion, setNewQuestion] = useState<{ [moduleId: string]: string }>({});
-  const [saving, setSaving] = useState<{ [moduleId: string]: boolean }>({});
-  const [selectedModule, setSelectedModule] = useState<string | null>(null);
 
-  console.log('ModulesPage rendered with user:', user);
-
-  const fetchModules = async () => {
-    if (!user) {
-      console.log('No user, skipping fetch');
-      return;
-    }
-    console.log('Fetching modules for user:', user._id);
-    setLoading(true);
-    setError("");
-    try {
+  const { data: modules = [], isLoading: loading, isError, error: queryError } = useQuery({
+    queryKey: ['modules'],
+    queryFn: async () => {
+      if (!user) return [];
       const mods = await auth.getUserModules();
-      console.log('Fetched modules:', mods);
-      setModules(mods.sort((a, b) => b.createdAt - a.createdAt));
-    } catch (err) {
-      console.error('Error fetching modules:', err);
-      setError("Failed to load modules.");
-    }
-    setLoading(false);
-  };
+      return mods.sort((a, b) => b.createdAt - a.createdAt);
+    },
+    enabled: !!user,
+  });
 
-  useEffect(() => {
-    fetchModules();
-    // eslint-disable-next-line
-  }, [user]);
+  const error = isError ? (queryError as Error).message : "";
 
-  const handleDelete = async (id: string) => {
-    if (!id) {
-      setError("Invalid module ID");
-      return;
-    }
-
-    console.log('Attempting to delete module:', id);
-    setDeleting(id);
-    try {
-      await auth.deleteVoiceModule(id);
-      console.log('Module deleted successfully, updating UI');
-      setModules(modules => modules.filter(m => m.id !== id));
+  const deleteMutation = useMutation({
+    mutationFn: auth.deleteVoiceModule,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData(['modules'], (old: auth.VoiceModule[] | undefined) => 
+        old ? old.filter(m => m.id !== id) : []
+      );
       if (selectedModule === id) {
         setSelectedModule(null);
       }
-    } catch (error) {
-      console.error('Failed to delete module:', error);
-      setError(`Failed to delete module: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    setDeleting(null);
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string, updates: Partial<auth.VoiceModule> }) => auth.updateVoiceModule(id, updates),
+    onSuccess: (_, variables) => {
+      queryClient.setQueryData(['modules'], (old: auth.VoiceModule[] | undefined) => 
+        old ? old.map(m => m.id === variables.id ? { ...m, ...variables.updates } : m) : []
+      );
+    }
+  });
+
+  const handleDelete = (id: string) => {
+    if (!id) return;
+    deleteMutation.mutate(id);
   };
 
-  // Save edited question
-  const saveEdit = async (mod: auth.VoiceModule, idx: number) => {
+  const saveEdit = (mod: auth.VoiceModule, idx: number) => {
     const currentQuestion = mod.questions[idx].question;
     if (!editValue[mod.id!] || editValue[mod.id!] === currentQuestion) {
       setEditing(e => ({ ...e, [mod.id!]: null }));
       return;
     }
-    setSaving(s => ({ ...s, [mod.id!]: true }));
     const updated = [...mod.questions];
     updated[idx] = { ...updated[idx], question: editValue[mod.id!] };
-    await auth.updateVoiceModule(mod.id!, { questions: updated });
-    setModules(ms => ms.map(m => m.id === mod.id ? { ...m, questions: updated } : m));
-    setEditing(e => ({ ...e, [mod.id!]: null }));
-    setSaving(s => ({ ...s, [mod.id!]: false }));
+    
+    updateMutation.mutate({ id: mod.id!, updates: { questions: updated } }, {
+      onSuccess: () => {
+        setEditing(e => ({ ...e, [mod.id!]: null }));
+      }
+    });
   };
 
-  // Delete question
-  const deleteQuestion = async (mod: auth.VoiceModule, idx: number) => {
+  const deleteQuestion = (mod: auth.VoiceModule, idx: number) => {
     if (mod.questions.length === 1) return; // Prevent deleting last question
-    setSaving(s => ({ ...s, [mod.id!]: true }));
     const updated = mod.questions.filter((_, i) => i !== idx);
-    await auth.updateVoiceModule(mod.id!, { questions: updated });
-    setModules(ms => ms.map(m => m.id === mod.id ? { ...m, questions: updated } : m));
-    setSaving(s => ({ ...s, [mod.id!]: false }));
+    updateMutation.mutate({ id: mod.id!, updates: { questions: updated } });
   };
 
-  // Add new question
-  const addQuestion = async (mod: auth.VoiceModule) => {
+  const addQuestion = (mod: auth.VoiceModule) => {
     if (!newQuestion[mod.id!] || !newQuestion[mod.id!].trim()) return;
-    setSaving(s => ({ ...s, [mod.id!]: true }));
     const newQuestionObj = {
       question: newQuestion[mod.id!].trim(),
       order: mod.questions.length,
       required: true
     };
     const updated = [...mod.questions, newQuestionObj];
-    await auth.updateVoiceModule(mod.id!, { questions: updated });
-    setModules(ms => ms.map(m => m.id === mod.id ? { ...m, questions: updated } : m));
-    setNewQuestion(nq => ({ ...nq, [mod.id!]: "" }));
-    setSaving(s => ({ ...s, [mod.id!]: false }));
+    updateMutation.mutate({ id: mod.id!, updates: { questions: updated } }, {
+      onSuccess: () => {
+        setNewQuestion(nq => ({ ...nq, [mod.id!]: "" }));
+      }
+    });
   };
 
   const handleSelectModule = (moduleId: string) => {
     setSelectedModule(moduleId);
-    console.log('Selected module:', moduleId);
   };
 
+  const isDeleting = (id: string) => deleteMutation.isPending && deleteMutation.variables === id;
+  const isSaving = (id: string) => updateMutation.isPending && updateMutation.variables?.id === id;
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12">
-      {/* Rich Background Elements */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+    <div className="min-h-screen relative overflow-hidden bg-zinc-950 px-4 sm:px-6 pt-24 pb-12">
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
 
       <div className="w-full max-w-7xl mx-auto relative z-10">
         {/* Header */}
         <div className="mb-8 sm:mb-10 text-left">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
-                <Layers className="w-3 h-3 text-blue-400" />
-                <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Agents</span>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <Layers className="w-5 h-5 text-blue-400" />
+                </div>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Voice Agents</h1>
               </div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Voice Agents<span className="text-zinc-500">.</span></h1>
-              <p className="text-zinc-400 text-xs leading-relaxed">
-                Create, manage, and organize your AI personas
-              </p>
+              <p className="text-zinc-400 text-sm">Create, manage, and organize your AI personas</p>
             </div>
+            
             <div className="flex items-center gap-3">
+              <div className="flex items-center bg-zinc-900 rounded-lg p-1 border border-white/5 mr-2">
+                <button 
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  Grid
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  List
+                </button>
+              </div>
               {selectedModule && (
                 <button
-                  className="flex items-center gap-2 bg-[#09090b] border border-white/[0.08] hover:bg-white/[0.02] text-zinc-300 font-medium px-3 py-1.5 rounded-xl transition-all duration-200 text-xs"
+                  className="flex items-center gap-2 bg-transparent border border-white/[0.1] hover:bg-white/[0.05] text-zinc-300 font-medium px-3 h-9 rounded-md transition-colors text-xs"
                   onClick={() => setSelectedModule(null)}
                   title="Clear Selection"
                 >
@@ -151,8 +154,8 @@ const ModulesPage: React.FC = () => {
                 </button>
               )}
               <button
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs transition-all duration-200 shadow-sm"
-                onClick={() => window.location.href = '/create-module'}
+                className="flex items-center gap-2 bg-white hover:bg-zinc-200 text-black font-semibold px-4 h-9 rounded-md text-[13px] transition-colors"
+                onClick={() => setCreateModuleOpen(true)}
               >
                 <Plus className="w-3.5 h-3.5" />
                 Create Agent
@@ -161,7 +164,7 @@ const ModulesPage: React.FC = () => {
           </div>
 
           {selectedModule && (
-            <div className="flex items-center gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+            <div className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-white/[0.04] rounded-lg">
               <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               <span className="text-blue-300 font-medium">Agent selected - Ready to use</span>
             </div>
@@ -169,7 +172,7 @@ const ModulesPage: React.FC = () => {
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <div className="mb-6 p-3 bg-zinc-900/50 border border-red-500/20 rounded-lg">
             <div className="flex items-center gap-2 text-red-400">
               <div className="w-2 h-2 bg-red-400 rounded-full"></div>
               {error}
@@ -178,9 +181,33 @@ const ModulesPage: React.FC = () => {
         )}
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
-            <div className="text-zinc-400 text-lg">Loading your modules...</div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-zinc-900/40 border border-white/[0.04] rounded-lg p-5 relative overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="w-3/4 h-6 rounded-md bg-white/[0.04] animate-pulse"></div>
+                    <div className="w-1/2 h-4 rounded-md bg-white/[0.04] animate-pulse"></div>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-white/[0.04] animate-pulse"></div>
+                </div>
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-24 h-8 rounded-lg bg-white/[0.04] animate-pulse"></div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-1/3 h-4 rounded-md bg-white/[0.04] animate-pulse"></div>
+                    <div className="w-8 h-4 rounded-md bg-white/[0.04] animate-pulse"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="w-full h-10 rounded-lg bg-white/[0.04] animate-pulse"></div>
+                    <div className="w-full h-10 rounded-lg bg-white/[0.04] animate-pulse"></div>
+                    <div className="w-full h-10 rounded-lg bg-white/[0.04] animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : modules.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
@@ -190,39 +217,107 @@ const ModulesPage: React.FC = () => {
             <h3 className="text-xl font-semibold text-zinc-100 mb-2">No agents found</h3>
             <p className="text-zinc-400 text-center mb-8 max-w-md">Create your first voice agent to get started with automated calling.</p>
             <button
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-zinc-100 font-medium px-6 py-3 rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-blue-500/30"
-              onClick={() => window.location.href = '/create-module'}
+              className="flex items-center gap-2 bg-white hover:bg-zinc-200 text-black font-semibold px-4 h-9 rounded-md transition-colors text-[13px]"
+              onClick={() => navigate('/create-module')}
             >
               <Plus className="w-4 h-4" />
               Create Your First Agent
             </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        ) : viewMode === 'list' ? (
+            <div className="bg-zinc-900/40 border border-white/[0.04] rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-zinc-400 bg-white/[0.02] border-b border-white/[0.08] uppercase">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">Agent Name</th>
+                      <th className="px-6 py-4 font-semibold">Configuration</th>
+                      <th className="px-6 py-4 font-semibold">Questions</th>
+                      <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.05]">
+                    {modules.map((mod) => (
+                      <tr key={mod.id} className={`hover:bg-white/[0.02] transition-colors ${selectedModule === mod.id ? 'bg-blue-900/10' : ''}`}>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedModule === mod.id ? 'bg-blue-500' : 'bg-white/10'}`}>
+                              <Layers className={`w-4 h-4 ${selectedModule === mod.id ? 'text-white' : 'text-zinc-400'}`} />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-white">{mod.name}</div>
+                              <div className="text-xs text-zinc-500 mt-0.5">ID: {mod.id?.slice(0, 8)}...</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {mod.systemPrompt && <Badge className="bg-purple-500/20 text-purple-400 border-none text-[10px] px-2 py-0.5">Persona</Badge>}
+                            {mod.ttsProvider && <Badge variant="outline" className="text-[10px] text-zinc-400 border-zinc-700">{mod.ttsProvider}</Badge>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-zinc-400">
+                          {mod.questions?.length || 0} configured
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedModule(selectedModule === mod.id ? null : mod.id!)}
+                              className={`px-3 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-semibold transition-colors ${selectedModule === mod.id ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                            >
+                              {selectedModule === mod.id ? 'Selected' : 'Select'}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(mod.id!)}
+                              className="p-1.5 text-zinc-500 hover:text-red-400 rounded-md hover:bg-white/5 transition-colors"
+                              title="Delete Agent"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {modules.map((mod) => (
               <div
                 key={mod.id}
-                className={`group relative bg-[#09090b] border rounded-2xl p-5 hover:bg-[#0c0c0e] transition-all duration-300 hover:-translate-y-1 shadow-xl ${selectedModule === mod.id
-                  ? 'border-blue-500/50 bg-blue-900/10'
-                  : 'border-white/[0.08] hover:border-white/[0.12]'
+                className={`group relative bg-zinc-900/40 border rounded-lg p-5 transition-all duration-300 ${selectedModule === mod.id
+                  ? 'border-zinc-500 bg-zinc-800'
+                  : 'border-white/[0.04] hover:bg-zinc-900/80'
                   }`}
               >
                 {/* Selection indicator */}
                 {selectedModule === mod.id && (
-                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
-                    <Check className="w-4 h-4 text-white" />
+                  <div className="absolute top-4 right-4 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                    <Check className="w-3 h-3 text-black" />
                   </div>
                 )}
 
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold text-zinc-100 truncate" title={mod.name}>
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <h3 className="text-lg font-semibold text-zinc-100 truncate max-w-[200px]" title={mod.name}>
                         {mod.name}
                       </h3>
                       {mod.systemPrompt && (
-                        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs px-1.5 py-0">Custom Persona</Badge>
+                        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px] px-1.5 py-0 uppercase tracking-widest font-bold">Custom Persona</Badge>
+                      )}
+                      {mod.ttsProvider && (
+                        <Badge variant="outline" className="text-[9px] uppercase tracking-widest text-zinc-400 border-zinc-700 bg-zinc-800/50 px-1.5 py-0">
+                          {mod.ttsProvider}
+                        </Badge>
+                      )}
+                      {mod.selectedLanguage && (
+                        <Badge variant="outline" className="text-[9px] uppercase tracking-widest text-zinc-400 border-zinc-700 bg-zinc-800/50 px-1.5 py-0">
+                          {mod.selectedLanguage}
+                        </Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-sm text-zinc-400">
@@ -238,12 +333,12 @@ const ModulesPage: React.FC = () => {
                   </div>
 
                   <button
-                    className="p-2 rounded-lg hover:bg-red-500/20 transition-all duration-200 opacity-0 group-hover:opacity-100"
+                    className="p-2 rounded-lg hover:bg-red-500/20 transition-all duration-200 opacity-0 group-hover:opacity-100 disabled:opacity-50"
                     onClick={() => handleDelete(mod.id!)}
-                    disabled={deleting === mod.id}
+                    disabled={isDeleting(mod.id!)}
                     title="Delete Module"
                   >
-                    {deleting === mod.id ? (
+                    {isDeleting(mod.id!) ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-400"></div>
                     ) : (
                       <Trash2 className="w-4 h-4 text-red-400 hover:text-red-300" />
@@ -254,9 +349,9 @@ const ModulesPage: React.FC = () => {
                 {/* Module Actions */}
                 <div className="flex items-center gap-2 mb-6">
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${selectedModule === mod.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-[#050505] border border-white/[0.08] text-zinc-300 hover:bg-zinc-900'
+                    className={`flex items-center gap-2 px-3 h-8 rounded-md text-[11px] uppercase tracking-wider font-semibold transition-all duration-200 ${selectedModule === mod.id
+                      ? 'bg-white text-black'
+                      : 'bg-transparent border border-white/[0.1] text-zinc-300 hover:bg-white/[0.05]'
                       }`}
                     onClick={() => handleSelectModule(mod.id!)}
                   >
@@ -266,17 +361,14 @@ const ModulesPage: React.FC = () => {
 
                   {selectedModule === mod.id && (
                     <div className="flex items-center gap-2">
-                      <div className="relative">
-                        <button
-                          disabled
-                          className="flex items-center gap-2 bg-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed opacity-60"
-                          title="Bulk calling coming soon"
-                        >
-                          <Phone className="w-4 h-4" />
-                          Bulk Call
-                        </button>
-                        <Badge variant="outline" className="absolute -top-2 -right-2 text-xs bg-yellow-500/10 text-yellow-400 border-yellow-500/30 px-1.5 py-0.5">Soon</Badge>
-                      </div>
+                      <button
+                        onClick={() => navigate(`/campaign?module=${mod.id}`)}
+                        className="flex items-center gap-2 bg-transparent border border-white/[0.1] hover:bg-white/[0.05] text-white px-4 h-8 rounded-md text-xs font-semibold transition-colors"
+                        title="Launch bulk call campaign"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        Launch Campaign
+                      </button>
                     </div>
                   )}
                 </div>
@@ -314,12 +406,12 @@ const ModulesPage: React.FC = () => {
                               autoFocus
                             />
                             <button
-                              className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-all duration-200"
+                              className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-all duration-200 disabled:opacity-50"
                               onClick={() => saveEdit(mod, i)}
-                              disabled={saving[mod.id!]}
+                              disabled={isSaving(mod.id!)}
                               title="Save"
                             >
-                              {saving[mod.id!] ? (
+                              {isSaving(mod.id!) ? (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                               ) : (
                                 <Check className="w-4 h-4" />
@@ -356,12 +448,12 @@ const ModulesPage: React.FC = () => {
                                 <Pencil className="w-3 h-3 text-blue-400" />
                               </button>
                               <button
-                                className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all duration-200"
+                                className="p-1.5 rounded-lg hover:bg-red-500/20 transition-all duration-200 disabled:opacity-50"
                                 onClick={() => deleteQuestion(mod, i)}
-                                disabled={mod.questions.length === 1 || saving[mod.id!]}
+                                disabled={mod.questions.length === 1 || isSaving(mod.id!)}
                                 title={mod.questions.length === 1 ? "At least one question required" : "Delete"}
                               >
-                                {saving[mod.id!] ? (
+                                {isSaving(mod.id!) ? (
                                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400"></div>
                                 ) : (
                                   <Trash2 className="w-3 h-3 text-red-400" />
@@ -383,18 +475,18 @@ const ModulesPage: React.FC = () => {
                       value={newQuestion[mod.id!] ?? ""}
                       onChange={e => setNewQuestion(nq => ({ ...nq, [mod.id!]: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') addQuestion(mod); }}
-                      disabled={saving[mod.id!]}
+                      disabled={isSaving(mod.id!)}
                     />
                     <button
-                      className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-zinc-100 transition-all duration-200 disabled:opacity-50"
+                      className="p-2 rounded-lg bg-white hover:bg-zinc-200 text-black transition-all duration-200 disabled:opacity-50"
                       onClick={() => addQuestion(mod)}
-                      disabled={saving[mod.id!] || !(newQuestion[mod.id!] && newQuestion[mod.id!].trim())}
+                      disabled={isSaving(mod.id!) || !(newQuestion[mod.id!] && newQuestion[mod.id!].trim())}
                       title="Add Question"
                     >
-                      {saving[mod.id!] ? (
+                      {isSaving(mod.id!) ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       ) : (
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-4 h-4 text-inherit" />
                       )}
                     </button>
                   </div>
@@ -404,8 +496,9 @@ const ModulesPage: React.FC = () => {
           </div>
         )}
       </div>
+      <CreateModule open={createModuleOpen} onClose={() => setCreateModuleOpen(false)} />
     </div>
   );
 };
 
-export default ModulesPage; 
+export default ModulesPage;

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import DeveloperKey from '../models/DeveloperKey.js';
+import logger from '../utils/logger.js';
 import User from '../models/User.js';
 
 /**
@@ -44,7 +45,7 @@ export const developerAuth = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Developer Auth Error:', error);
+    logger.error('Developer Auth Error:', error);
     res.status(500).json({ success: false, error: 'Server error during authentication' });
   }
 };

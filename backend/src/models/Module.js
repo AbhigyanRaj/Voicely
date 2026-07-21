@@ -79,6 +79,8 @@ const moduleSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+moduleSchema.index({ userId: 1, workspaceId: 1, isDeleted: 1 });
+
 const Module = mongoose.model('Module', moduleSchema);
 
 export default Module; 

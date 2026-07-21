@@ -1,6 +1,7 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
 import DeveloperKey from '../models/DeveloperKey.js';
+import logger from '../utils/logger.js';
 import crypto from 'crypto';
 import { testPipelineLatency } from '../utils/pipelineTest.js';
 import { encrypt } from '../utils/crypto.js';
@@ -56,7 +57,7 @@ router.get('/keys', protect, async (req, res) => {
     const keys = await DeveloperKey.find({ userId: req.user._id }).sort({ createdAt: -1 });
     res.json({ success: true, keys });
   } catch (error) {
-    console.error('Error fetching developer keys:', error);
+    logger.error('Error fetching developer keys:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
@@ -116,7 +117,7 @@ router.post('/keys', protect, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error generating developer key:', error);
+    logger.error('Error generating developer key:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
@@ -135,7 +136,7 @@ router.delete('/keys/:id', protect, async (req, res) => {
     await key.deleteOne();
     res.json({ success: true, message: 'Key deleted' });
   } catch (error) {
-    console.error('Error deleting developer key:', error);
+    logger.error('Error deleting developer key:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });

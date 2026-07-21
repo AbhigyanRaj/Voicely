@@ -15,7 +15,7 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ error: 'Not authorized, no token' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'vokai-simple-secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Check if database is available
     if (!isDBConnected()) {
@@ -32,7 +32,7 @@ export const protect = async (req, res, next) => {
 };
 
 export const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'vokai-simple-secret', {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
 }; 

@@ -1,56 +1,83 @@
-import Hero from "./components/Hero";
-import { Routes, Route } from 'react-router-dom';
-import ModulesPage from './components/ModulesPage';
-import AnalyticsPage from './components/AnalyticsPage';
-import SettingsPage from './components/SettingsPage';
-import DeveloperPage from './components/DeveloperPage';
-import ApiDocsPage from './components/ApiDocsPage';
+import React, { Suspense } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from "./components/Navbar";
-import CampaignPage from "./components/CampaignPage";
 import { GoogleOAuthProvider } from '@react-oauth/google';
+
+const Hero = React.lazy(() => import('./components/Hero'));
+const ModulesPage = React.lazy(() => import('./components/ModulesPage'));
+const AnalyticsPage = React.lazy(() => import('./components/AnalyticsPage'));
+const SettingsPage = React.lazy(() => import('./components/SettingsPage'));
+const DeveloperPage = React.lazy(() => import('./components/DeveloperPage'));
+const ApiDocsPage = React.lazy(() => import('./components/ApiDocsPage'));
+const CampaignPage = React.lazy(() => import('./components/CampaignPage'));
+const NotFoundPage = React.lazy(() => import('./components/NotFoundPage'));
+import PageLoader from './components/PageLoader';
+import { PageTransition } from './components/PageTransition';
 import { AuthProvider } from './contexts/AuthContext';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
+import { ErrorBoundary } from 'react-error-boundary';
+import { GlobalErrorFallback } from './components/GlobalErrorBoundary';
+import { DashboardLayout } from './components/dashboard/DashboardLayout';
 
 function App() {
-  // Updated for Vercel deployment with proper environment variables
-  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
-  console.log('Google Client ID loaded:', googleClientId ? 'EXISTS' : 'MISSING');
-  
+  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || 'missing-client-id';
+  const location = useLocation();
+
   return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <AuthProvider>
-        <Navbar />
-        <Routes>
-          <Route path="/" element={<Hero />} />
-          <Route path="/modules" element={
-            <ProtectedRoute>
-              <ModulesPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/campaign" element={
-            <ProtectedRoute>
-              <CampaignPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/analytics" element={
-            <ProtectedRoute>
-              <AnalyticsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/developer" element={
-            <ProtectedRoute>
-              <DeveloperPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/developer/docs" element={<ApiDocsPage />} />
-        </Routes>
-      </AuthProvider>
-    </GoogleOAuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <GoogleOAuthProvider clientId={googleClientId}>
+        <AuthProvider>
+          <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
+            <Suspense fallback={<PageLoader />}>
+              <PageTransition routeKey={location.pathname}>
+                <Routes location={location}>
+                  <Route path="/" element={<Hero />} />
+                  <Route path="/modules" element={
+                    <ProtectedRoute>
+                      <DashboardLayout>
+                        <ModulesPage />
+                      </DashboardLayout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/campaign" element={
+                    <ProtectedRoute>
+                      <DashboardLayout>
+                        <CampaignPage />
+                      </DashboardLayout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/analytics" element={
+                    <ProtectedRoute>
+                      <DashboardLayout>
+                        <AnalyticsPage />
+                      </DashboardLayout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/settings" element={
+                    <ProtectedRoute>
+                      <DashboardLayout>
+                        <SettingsPage />
+                      </DashboardLayout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/developer" element={
+                    <ProtectedRoute>
+                      <DashboardLayout>
+                        <DeveloperPage />
+                      </DashboardLayout>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/developer/docs" element={<ApiDocsPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </PageTransition>
+            </Suspense>
+          </ErrorBoundary>
+        </AuthProvider>
+      </GoogleOAuthProvider>
+    </QueryClientProvider>
   );
 }
 

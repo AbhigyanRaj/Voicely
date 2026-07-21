@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Trash2, 
   Copy, 
@@ -6,7 +7,7 @@ import {
   ChevronDown,
   Mic,
   Activity,
-  BookOpen
+  Square
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useDeveloperS2S } from '../hooks/useDeveloperS2S';
@@ -17,8 +18,6 @@ import {
   deleteDeveloperKey
 } from '../lib/developer';
 import type {
-  PipelineOptions,
-  DeveloperKey,
   PipelineModelOption
 } from '../lib/developer';
 import { getApiBaseUrl } from '../lib/api';
@@ -46,27 +45,22 @@ const ModelSelect: React.FC<ModelSelectProps> = ({ label, options, value, onChan
   }, []);
 
   return (
-    <div className="relative mb-5" ref={dropdownRef}>
-      <label className="text-xs font-medium text-zinc-400 mb-2 block px-1">{label}</label>
-      <div 
-        onClick={() => setOpen(!open)}
-        className={`w-full bg-[#09090b] border ${open ? 'border-white/[0.15]' : 'border-white/[0.08]'} rounded-xl p-2.5 cursor-pointer hover:border-white/[0.12] transition-colors flex items-center justify-between group`}
-      >
+    <div className="relative mb-6" ref={dropdownRef}>
+      <label className="text-[12px] font-medium text-zinc-400 mb-2 block">{label}</label>
+      <div className={`w-full bg-zinc-800 border ${open ? 'border-zinc-500' : 'border-white/[0.1]'} rounded-md px-3 py-2.5 cursor-pointer hover:border-zinc-400 transition-colors flex items-center justify-between`} onClick={() => setOpen(!open)}>
         {selectedModel ? (
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-medium tracking-wide px-1.5 py-0.5 rounded bg-zinc-800/50 text-zinc-400 uppercase">
-              {selectedModel.provider}
-            </span>
-            <span className="font-medium text-zinc-200 text-sm">{selectedModel.name}</span>
+            <span className="font-medium text-zinc-100 text-[13px]">{selectedModel.name}</span>
+            <span className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase px-1.5 py-0.5 bg-white/[0.03] rounded-md">{selectedModel.provider}</span>
           </div>
         ) : (
-          <span className="text-zinc-500 text-sm">Select an option...</span>
+          <span className="text-zinc-500 text-sm">Select model...</span>
         )}
         <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </div>
 
       {open && (
-        <div className="absolute z-50 w-full mt-1 bg-[#09090b] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute z-50 w-full mt-1 bg-zinc-800 border border-white/[0.1] rounded-md shadow-xl overflow-hidden py-1">
           <div className="max-h-64 overflow-y-auto p-1 custom-scrollbar">
             {options.map((option) => {
               const disabled = option.isComingSoon;
@@ -74,22 +68,21 @@ const ModelSelect: React.FC<ModelSelectProps> = ({ label, options, value, onChan
                 <div 
                   key={option.id}
                   onClick={() => { if (!disabled) { onChange(option.id); setOpen(false); } }}
-                  className={`px-3 py-2.5 rounded-md flex items-center justify-between transition-colors
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-zinc-900'}
-                    ${value === option.id ? 'bg-zinc-800/80' : ''}
+                  className={`px-3 py-2 rounded-sm flex items-center justify-between transition-colors
+                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-zinc-800/50'}
+                    ${value === option.id ? 'bg-zinc-800/30 text-white' : 'text-zinc-400'}
                   `}
                 >
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm ${value === option.id ? 'text-white font-medium' : 'text-zinc-300'}`}>{option.name}</span>
-                      <span className="text-[9px] uppercase font-medium text-zinc-500 tracking-wider bg-zinc-800/50 px-1 rounded">{option.provider}</span>
-                      {disabled && <span className="text-[8px] uppercase font-bold text-pink-400/80 tracking-widest border border-pink-500/30 bg-pink-500/10 px-1.5 py-0.5 rounded-full ml-1">Coming Soon</span>}
+                      <span className={`text-sm ${value === option.id ? 'font-medium text-white' : ''}`}>{option.name}</span>
+                      {disabled && <span className="text-[8px] uppercase font-bold text-zinc-500 tracking-widest border border-zinc-700 bg-zinc-800/50 px-1.5 py-0.5 rounded-sm ml-1">Coming Soon</span>}
                     </div>
-                    <div className="text-[11px] text-zinc-500">{option.description}</div>
+                    <div className="text-[10px] text-zinc-500">{option.description}</div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 text-[10px] text-zinc-500">
-                    <span className="flex items-center gap-1">{option.latency}ms</span>
-                    <span className="flex items-center gap-1">{option.accuracy}%</span>
+                  <div className="flex flex-col items-end gap-0.5 text-[9px] text-zinc-500">
+                    <span>{option.latency}ms</span>
+                    <span>{option.accuracy}% acc</span>
                   </div>
                 </div>
               );
@@ -104,18 +97,15 @@ const ModelSelect: React.FC<ModelSelectProps> = ({ label, options, value, onChan
 
 // --- Main Page ---
 const DeveloperPage: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [options, setOptions] = useState<PipelineOptions | null>(null);
-  const [keys, setKeys] = useState<DeveloperKey[]>([]);
-  
+  const queryClient = useQueryClient();
   const [selectedSTT, setSelectedSTT] = useState<string>('');
   const [selectedLLM, setSelectedLLM] = useState<string>('');
   const [selectedTTS, setSelectedTTS] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'api' | 'keys' | 'webhooks' | 'logs'>('api');
   
   const [keyName, setKeyName] = useState('');
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   
-  const [generating, setGenerating] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [testedLatency, setTestedLatency] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -123,57 +113,60 @@ const DeveloperPage: React.FC = () => {
 
   const { isTesting, startTesting, stopTesting } = useDeveloperS2S();
 
+  const { data: options, isLoading: optionsLoading } = useQuery({
+    queryKey: ['pipelineOptions'],
+    queryFn: getPipelineOptions,
+  });
+
+  const { data: keys = [], isLoading: keysLoading } = useQuery({
+    queryKey: ['developerKeys'],
+    queryFn: getDeveloperKeys,
+  });
+
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [opts, userKeys] = await Promise.all([
-        getPipelineOptions(),
-        getDeveloperKeys()
-      ]);
-      setOptions(opts);
-      setKeys(userKeys);
-      
-      if (opts.stt.length) setSelectedSTT(opts.stt[0].id);
-      if (opts.llm.length) setSelectedLLM(opts.llm[0].id);
-      if (opts.tts.length) setSelectedTTS(opts.tts[0].id);
-      
-    } catch (error) {
-      console.error('Failed to load developer data', error);
-    } finally {
-      setLoading(false);
+    if (options && !selectedSTT) {
+      if (options.stt.length) setSelectedSTT(options.stt[0].id);
+      if (options.llm.length) setSelectedLLM(options.llm[0].id);
+      if (options.tts.length) setSelectedTTS(options.tts[0].id);
     }
-  };
+  }, [options, selectedSTT]);
 
-  const handleGenerateKey = async () => {
-    if (!keyName.trim()) return;
-    setGenerating(true);
-    setTestedLatency(null);
-    try {
-      const result = await generateDeveloperKey(keyName, selectedSTT, selectedLLM, selectedTTS, providerKeys);
+  const generateKeyMutation = useMutation({
+    mutationFn: async () => {
+      if (!keyName.trim()) throw new Error("Key name is required");
+      return generateDeveloperKey(keyName, selectedSTT, selectedLLM, selectedTTS, providerKeys);
+    },
+    onSuccess: (result) => {
       setGeneratedKey(result.key);
       if (result.actualLatency) {
         setTestedLatency(result.actualLatency);
       }
-      setKeys([result.keyRecord, ...keys]);
+      queryClient.invalidateQueries({ queryKey: ['developerKeys'] });
       setKeyName('');
       setProviderKeys({});
-    } catch (error) {
+    },
+    onError: (error) => {
       console.error('Failed to generate key', error);
-    } finally {
-      setGenerating(false);
     }
-  };
+  });
 
-  const handleDeleteKey = async (id: string) => {
-    try {
-      await deleteDeveloperKey(id);
-      setKeys(keys.filter(k => k._id !== id));
-    } catch (error) {
+  const deleteKeyMutation = useMutation({
+    mutationFn: (id: string) => deleteDeveloperKey(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['developerKeys'] });
+    },
+    onError: (error) => {
       console.error('Failed to delete key', error);
     }
+  });
+
+  const handleGenerateKey = () => {
+    setTestedLatency(null);
+    generateKeyMutation.mutate();
+  };
+
+  const handleDeleteKey = (id: string) => {
+    deleteKeyMutation.mutate(id);
   };
 
   const copyToClipboard = (text: string, isCurl = false) => {
@@ -187,10 +180,13 @@ const DeveloperPage: React.FC = () => {
     }
   };
 
-  if (loading || !options) {
+  if (optionsLoading || keysLoading || !options) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+      <div className="min-h-screen bg-[#0a0a0a] px-6 sm:px-12 pt-20 pb-12 font-sans flex items-center justify-center">
+        <div className="animate-pulse flex flex-col items-center gap-4">
+          <div className="w-6 h-6 rounded-full border-2 border-zinc-800 border-t-zinc-500 animate-spin"></div>
+          <div className="text-zinc-600 text-sm">Loading environment...</div>
+        </div>
       </div>
     );
   }
@@ -212,26 +208,15 @@ const DeveloperPage: React.FC = () => {
   const wsSnippet = generatedKey ? `// Node.js WebSocket Example
 import WebSocket from 'ws';
 
-const ws = new WebSocket('${getApiBaseUrl().replace('http', 'ws').replace('/api', '')}/api/v1/stream?token=${generatedKey}&prompt=You+are+a+helpful+assistant');
+const ws = new WebSocket('${getApiBaseUrl().replace('http', 'ws').replace('/api/v1', '')}/api/v1/stream?token=${generatedKey}&prompt=You+are+a+helpful+assistant');
 
 ws.on('open', () => {
   console.log('Connected to S2S Pipeline!');
-  
-  // Stream 16kHz PCM Audio to the endpoint
   // ws.send(audioBuffer);
-});
-
-ws.on('message', (data) => {
-  // Receive 16kHz PCM Audio from the AI
-  // playAudio(data);
 });` : '';
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12 font-sans text-zinc-200 selection:bg-zinc-800">
-      {/* Rich Background Elements */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
-
+    <div className="h-screen overflow-hidden bg-zinc-950 flex flex-col font-sans text-zinc-200">
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -239,259 +224,287 @@ ws.on('message', (data) => {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       `}</style>
 
-      <div className="w-full max-w-6xl mx-auto relative z-10 space-y-8">
+      <div className="w-full max-w-6xl mx-auto flex flex-col h-full px-6 sm:px-12 pt-16 pb-8">
         
-        {/* Header */}
-        <div className="mb-8 sm:mb-10 flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="text-left">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
-              <BookOpen className="w-3 h-3 text-blue-400" />
-              <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Developers</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">API Configuration<span className="text-zinc-500">.</span></h1>
-            <p className="text-zinc-400 text-xs leading-relaxed">
-              Configure your voice pipeline and manage API keys for external integrations.
-            </p>
+        {/* Modern Header */}
+        <div className="flex-shrink-0 flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
+          <div>
+            <h1 className="text-3xl font-bold text-white tracking-tight mb-2">API Configuration</h1>
+            <p className="text-zinc-400 text-sm">Manage your voice pipeline models and secure developer credentials.</p>
           </div>
           <Link 
             to="/developer/docs" 
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-medium transition-colors"
+            className="text-sm font-medium text-zinc-400 hover:text-white bg-transparent border border-white/[0.08] hover:bg-white/[0.04] px-4 py-2 rounded-md transition-colors flex items-center gap-2"
           >
-            <BookOpen className="w-3.5 h-3.5" />
-            View API Usage Guide
+            Documentation &rarr;
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          
-          {/* Left Column: Pipeline Builder */}
-          <div className="lg:col-span-7 space-y-8">
-            <section>
-              <h2 className="text-sm font-medium text-white mb-6">Voice Pipeline</h2>
-              
-              <div className="space-y-1">
-                <ModelSelect 
-                  label="Speech-to-Text" 
-                  options={options.stt} 
-                  value={selectedSTT} 
-                  onChange={setSelectedSTT} 
-                />
-                
-                <ModelSelect 
-                  label="Intelligence" 
-                  options={options.llm} 
-                  value={selectedLLM} 
-                  onChange={setSelectedLLM} 
-                />
-
-                <ModelSelect 
-                  label="Text-to-Speech" 
-                  options={options.tts} 
-                  value={selectedTTS} 
-                  onChange={setSelectedTTS} 
-                />
-              </div>
-            </section>
-
-            <div className="h-px bg-white/[0.05] my-8"></div>
-
-            <section>
-              <h2 className="text-sm font-medium text-white mb-4">Pipeline Metrics</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-[#09090b] border border-white/[0.08] rounded-xl relative shadow-sm">
-                  <div className="text-xs text-zinc-500 mb-1 flex items-center justify-between">
-                    {testedLatency ? 'Tested Latency' : 'Estimated Latency'}
-                    {testedLatency && (
-                      <span className="flex h-2 w-2 relative ml-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-lg font-medium text-zinc-200">
-                    {testedLatency ? (
-                       <span className="text-green-400">{testedLatency}</span>
-                    ) : (
-                       `~${totalLatency}`
-                    )}
-                    <span className="text-xs text-zinc-500 ml-1">ms</span>
-                  </div>
-                </div>
-                <div className="p-4 bg-[#09090b] border border-white/[0.08] rounded-xl shadow-sm">
-                  <div className="text-xs text-zinc-500 mb-1">Average Accuracy</div>
-                  <div className="text-lg font-medium text-zinc-200">{avgAccuracy.toFixed(1)}<span className="text-xs text-zinc-500 ml-1">%</span></div>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          {/* Right Column: Key Generation */}
-          <div className="lg:col-span-5">
-            <section className="bg-[#09090b] border border-white/[0.08] p-5 rounded-2xl shadow-xl">
-              <h2 className="text-sm font-medium text-white mb-6">Configure Credentials</h2>
-              
-              <div className="space-y-4">
-                {generatedKey ? (
-                  <div className="animate-in fade-in duration-200">
-                    <div className="p-4 bg-black/40 border border-white/[0.05] rounded-xl mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] uppercase text-zinc-400 font-medium tracking-wider">Secret Key</span>
-                        <button onClick={() => copyToClipboard(generatedKey)} className="text-blue-500 hover:text-blue-400 transition-colors">
-                          {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                      <div className="font-mono text-xs text-zinc-300 break-all bg-black p-2 rounded border border-white/[0.05]">
-                        {generatedKey}
-                      </div>
-                      <p className="text-[10px] text-zinc-500 mt-2">Copy this key now. You won't be able to see it again.</p>
-                    </div>
-
-                    <div className="p-4 bg-black/40 border border-white/[0.05] rounded-xl mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] uppercase text-zinc-400 font-medium tracking-wider">Test with WebSocket</span>
-                        <button onClick={() => copyToClipboard(wsSnippet, true)} className="text-zinc-500 hover:text-zinc-400 transition-colors">
-                          {curlCopied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                      <pre className="font-mono text-[10px] text-zinc-400 overflow-x-auto bg-black p-3 rounded border border-white/[0.05] custom-scrollbar leading-relaxed">
-                        {wsSnippet}
-                      </pre>
-                    </div>
-
-                    <div className="flex gap-2">
-                      {isTesting ? (
-                        <button 
-                          onClick={stopTesting}
-                          className="w-full flex items-center justify-center gap-2 text-xs bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-xl py-2.5 transition-colors shadow-sm"
-                        >
-                          <Square className="w-3.5 h-3.5 fill-current" />
-                          Stop Testing
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => startTesting(generatedKey)}
-                          className="w-full flex items-center justify-center gap-2 text-xs bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 rounded-xl py-2.5 transition-colors shadow-sm"
-                        >
-                          <Mic className="w-3.5 h-3.5" />
-                          Test Pipeline (Mic)
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => { setGeneratedKey(null); stopTesting(); }} 
-                        className="w-full text-xs bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white rounded-xl py-2.5 transition-colors shadow-sm"
-                      >
-                        Done
-                      </button>
-                    </div>
-
-                    {isTesting && (
-                      <div className="flex items-center gap-2 text-[10px] text-blue-400 bg-blue-500/5 p-3 rounded-lg border border-blue-500/10 mt-3">
-                        <Activity className="w-3.5 h-3.5 animate-pulse" />
-                        <span>Live WebSocket stream active. Speak into your microphone.</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="text-xs text-zinc-500 mb-2 block">Connection Name</label>
-                      <input 
-                        type="text" 
-                        value={keyName}
-                        onChange={(e) => setKeyName(e.target.value)}
-                        className="w-full bg-[#050505] border border-white/[0.08] px-3 py-2.5 rounded-xl text-white text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-600"
-                        placeholder="e.g. Production Env"
-                      />
-                    </div>
-
-                    <div className="pt-2 pb-2">
-                      <div className="text-[10px] uppercase text-zinc-500 font-medium tracking-wider mb-3">Provider API Keys</div>
-                      <div className="space-y-3">
-                        {activeProviders.map(provider => (
-                          <div key={provider}>
-                            <label className="text-xs text-zinc-400 mb-1.5 block">{provider} API Key</label>
-                            <input 
-                              type="password"
-                              value={providerKeys[provider] || ''}
-                              onChange={(e) => setProviderKeys({...providerKeys, [provider]: e.target.value})}
-                              className="w-full bg-[#050505] border border-white/[0.08] px-3 py-2.5 rounded-xl text-white text-xs font-medium focus:outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-700"
-                              placeholder={`Enter ${provider} API Key`}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <button 
-                      onClick={handleGenerateKey} 
-                      disabled={generating || !keyName.trim()}
-                      className="w-full bg-blue-600 text-white hover:bg-blue-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed rounded-xl py-2.5 text-xs font-semibold mt-2 transition-colors"
-                    >
-                      {generating ? 'Generating...' : 'Generate Key'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </section>
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex-shrink-0 flex items-center gap-6 border-b border-white/[0.08] overflow-x-auto custom-scrollbar mt-6">
+          {(['api', 'keys', 'webhooks', 'logs'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-4 px-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
+                activeTab === tab
+                  ? 'border-blue-500 text-white'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {tab === 'api' ? 'API & Pipeline' : tab === 'keys' ? 'API Keys' : tab === 'webhooks' ? 'Webhooks' : 'System Logs'}
+            </button>
+          ))}
         </div>
 
-        {/* API Keys Table */}
-        <section className="pt-8 border-t border-white/[0.05]">
-          <h2 className="text-sm font-medium text-white mb-6">Active Keys</h2>
-          
-          {keys.length === 0 ? (
-            <div className="text-sm text-zinc-600">No active API keys found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-zinc-500 border-b border-zinc-900">
-                  <tr>
-                    <th className="pb-3 font-normal">Name</th>
-                    <th className="pb-3 font-normal">Key Prefix</th>
-                    <th className="pb-3 font-normal">Pipeline Config</th>
-                    <th className="pb-3 font-normal text-right">Created</th>
-                    <th className="pb-3 font-normal text-right"></th>
-                  </tr>
-                </thead>
-                <tbody className="text-zinc-300">
-                  {keys.map(k => (
-                    <tr key={k._id} className="border-b border-zinc-900/50 group">
-                      <td className="py-4 font-medium">{k.name}</td>
-                      <td className="py-4 font-mono text-xs text-zinc-500">{k.keyPrefix}</td>
-                      <td className="py-4">
-                        <div className="flex gap-1.5 text-[10px]">
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                            {options.stt.find(o => o.id === k.pipelineConfig.sttModel)?.name || 'Unknown'}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                            {options.llm.find(o => o.id === k.pipelineConfig.llmModel)?.name || 'Unknown'}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                            {options.tts.find(o => o.id === k.pipelineConfig.ttsModel)?.name || 'Unknown'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-4 text-right text-xs text-zinc-500">
-                        {new Date(k.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="py-4 text-right">
-                        <button 
-                          onClick={() => handleDeleteKey(k._id)} 
-                          className="text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Revoke Key"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar mt-8 pb-4 pr-2">
+          {activeTab === 'api' && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Left Column: Pipeline Builder */}
+            <div className="lg:col-span-7 space-y-6">
+              <section className="bg-zinc-900/40 border border-white/[0.04] p-6 sm:p-8 rounded-lg">
+                <h2 className="text-[15px] font-semibold text-white mb-6">Voice Pipeline Models</h2>
+                <div className="space-y-2">
+                  <ModelSelect 
+                    label="Speech-to-Text" 
+                    options={options.stt} 
+                    value={selectedSTT} 
+                    onChange={setSelectedSTT} 
+                  />
+                  
+                  <ModelSelect 
+                    label="Intelligence" 
+                    options={options.llm} 
+                    value={selectedLLM} 
+                    onChange={setSelectedLLM} 
+                  />
 
+                  <ModelSelect 
+                    label="Text-to-Speech" 
+                    options={options.tts} 
+                    value={selectedTTS} 
+                    onChange={setSelectedTTS} 
+                  />
+                </div>
+              </section>
+
+              <section className="bg-zinc-900/40 border border-white/[0.04] p-6 sm:p-8 rounded-lg">
+                <h2 className="text-[15px] font-semibold text-white mb-6">Pipeline Performance Metrics</h2>
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="bg-zinc-900/50 border border-white/[0.05] p-5 rounded-md">
+                    <div className="text-[12px] font-medium text-zinc-400 mb-2 flex items-center gap-2">
+                      {testedLatency ? 'Tested Latency' : 'Estimated Latency'}
+                      {testedLatency && (
+                        <span className="flex h-1.5 w-1.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-3xl font-semibold text-zinc-100">
+                      {testedLatency ? (
+                         <span className="text-green-400">{testedLatency}</span>
+                      ) : (
+                         <span className="text-zinc-200">~{totalLatency}</span>
+                      )}
+                      <span className="text-sm text-zinc-500 ml-1 font-normal">ms</span>
+                    </div>
+                  </div>
+                  <div className="bg-zinc-900/50 border border-white/[0.05] p-5 rounded-md">
+                    <div className="text-[12px] font-medium text-zinc-400 mb-2">Average Accuracy</div>
+                    <div className="text-3xl font-semibold text-zinc-100">{avgAccuracy.toFixed(1)}<span className="text-sm text-zinc-500 ml-1 font-normal">%</span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* Right Column: Key Generation */}
+            <div className="lg:col-span-5">
+              <section className="bg-zinc-900/40 border border-white/[0.04] p-6 sm:p-8 rounded-lg h-full">
+                <h2 className="text-[15px] font-semibold text-white mb-6">Integration Credentials</h2>
+                  
+                  <div className="space-y-6">
+                    {generatedKey ? (
+                      <div className="animate-in fade-in duration-300 space-y-6">
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">Secret Key</span>
+                            <button onClick={() => copyToClipboard(generatedKey)} className="text-zinc-400 hover:text-white transition-colors">
+                              {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <div className="font-mono text-[13px] text-zinc-200 break-all bg-zinc-900/50 py-3 px-4 rounded-md border border-white/[0.05]">
+                            {generatedKey}
+                          </div>
+                          <p className="text-[11px] text-zinc-500 mt-2">Copy this key now. It will not be shown again.</p>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">WebSocket Snippet</span>
+                            <button onClick={() => copyToClipboard(wsSnippet, true)} className="text-zinc-400 hover:text-white transition-colors">
+                              {curlCopied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <pre className="font-mono text-[11px] text-zinc-400 overflow-x-auto bg-zinc-900/50 p-4 rounded-md border border-white/[0.05] custom-scrollbar leading-relaxed">
+                            {wsSnippet}
+                          </pre>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                          {isTesting ? (
+                            <button 
+                              onClick={stopTesting}
+                              className="flex-1 flex items-center justify-center gap-2 text-xs bg-transparent border border-red-900/50 text-red-400 hover:bg-red-950/30 rounded-md py-2.5 transition-colors"
+                            >
+                              <Square className="w-3 h-3 fill-current" />
+                              Stop
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => startTesting(generatedKey)}
+                              className="flex-1 flex items-center justify-center gap-2 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded-md py-2.5 transition-colors"
+                            >
+                              <Mic className="w-3.5 h-3.5" />
+                              Test Pipeline
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => { setGeneratedKey(null); stopTesting(); }} 
+                            className="flex-1 text-xs bg-white text-black hover:bg-zinc-200 font-medium rounded-md py-2.5 transition-colors"
+                          >
+                            Done
+                          </button>
+                        </div>
+                        
+                        {isTesting && (
+                          <div className="flex items-center gap-2 text-[11px] text-green-400 bg-green-500/10 p-3 rounded-md border border-green-500/20">
+                            <Activity className="w-3.5 h-3.5 animate-pulse" />
+                            <span>Live streaming. Speak into your microphone.</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div>
+                          <label className="text-[13px] font-medium text-zinc-400 mb-2 block">Connection Name</label>
+                          <input 
+                            type="text" 
+                            value={keyName}
+                            onChange={(e) => setKeyName(e.target.value)}
+                            className="w-full bg-zinc-900/50 border border-white/[0.1] px-3 h-10 rounded-md text-zinc-200 text-sm focus:outline-none focus:border-zinc-400 transition-colors placeholder:text-zinc-500"
+                            placeholder="e.g. Production Environment"
+                          />
+                        </div>
+
+                        <div className="pt-2">
+                          <div className="text-[12px] font-medium text-zinc-500 mb-4">Required Provider Keys</div>
+                          <div className="space-y-4">
+                            {activeProviders.map(provider => (
+                              <div key={provider}>
+                                <label className="text-[12px] text-zinc-400 mb-2 block">{provider}</label>
+                                <input 
+                                  type="password"
+                                  value={providerKeys[provider] || ''}
+                                  onChange={(e) => setProviderKeys({...providerKeys, [provider]: e.target.value})}
+                                  className="w-full bg-zinc-900/50 border border-white/[0.1] px-3 h-10 rounded-md text-zinc-200 text-sm focus:outline-none focus:border-zinc-400 transition-colors placeholder:text-zinc-500"
+                                  placeholder="API Key"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <button 
+                          onClick={handleGenerateKey} 
+                          disabled={generateKeyMutation.isPending || !keyName.trim()}
+                          className="w-full bg-white hover:bg-zinc-200 text-black disabled:opacity-50 disabled:cursor-not-allowed rounded-md h-10 text-[13px] font-semibold mt-4 transition-colors"
+                        >
+                          {generateKeyMutation.isPending ? 'Generating...' : 'Generate API Key'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+          )}
+
+          {activeTab === 'keys' && (
+            <section className="bg-zinc-900/40 border border-white/[0.04] rounded-lg overflow-hidden h-full flex flex-col">
+              <div className="px-6 sm:px-8 py-6 border-b border-white/[0.04] flex-shrink-0">
+                <h2 className="text-[15px] font-semibold text-white">Active Integrations</h2>
+              </div>
+              
+              {keys.length === 0 ? (
+                <div className="text-[13px] text-zinc-500 p-8 text-center bg-zinc-900/50">No active API keys found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead className="text-[12px] font-medium text-zinc-400 bg-zinc-900/80 border-b border-white/[0.04]">
+                      <tr>
+                        <th className="py-4 px-6 sm:px-8 font-normal">Name</th>
+                        <th className="py-4 px-6 sm:px-8 font-normal">Prefix</th>
+                        <th className="py-4 px-6 sm:px-8 font-normal">Configuration</th>
+                        <th className="py-4 px-6 sm:px-8 font-normal text-right">Created</th>
+                        <th className="py-4 px-6 sm:px-8 text-right"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-zinc-300">
+                      {keys.map(k => (
+                        <tr key={k._id} className="border-b border-white/[0.02] hover:bg-white/[0.01] transition-colors group">
+                          <td className="py-4 px-6 sm:px-8 font-medium text-zinc-100">{k.name}</td>
+                          <td className="py-4 px-6 sm:px-8 font-mono text-[13px] text-zinc-500">{k.keyPrefix}</td>
+                          <td className="py-4 px-6 sm:px-8">
+                            <div className="flex flex-wrap gap-2 text-[11px] text-zinc-400">
+                              <span className="px-2 py-1 bg-zinc-700/50 border border-white/[0.04] rounded-md">{options.stt.find(o => o.id === k.pipelineConfig.sttModel)?.name || '-'}</span>
+                              <span className="px-2 py-1 bg-zinc-700/50 border border-white/[0.04] rounded-md">{options.llm.find(o => o.id === k.pipelineConfig.llmModel)?.name || '-'}</span>
+                              <span className="px-2 py-1 bg-zinc-700/50 border border-white/[0.04] rounded-md">{options.tts.find(o => o.id === k.pipelineConfig.ttsModel)?.name || '-'}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 sm:px-8 text-right text-[13px] text-zinc-500">
+                            {new Date(k.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 sm:px-8 text-right">
+                            <button 
+                              onClick={() => handleDeleteKey(k._id)} 
+                              className="text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Revoke Key"
+                            >
+                              <Trash2 strokeWidth={1.5} className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'webhooks' && (
+          <div className="flex flex-col items-start py-12">
+            <h4 className="text-lg font-medium text-zinc-200 mb-2">Webhooks</h4>
+            <p className="text-zinc-500 text-sm max-w-md">
+              Configure endpoints to receive real-time call events and transcripts. This feature is currently in preview.
+            </p>
+          </div>
+        )}
+
+        {activeTab === 'logs' && (
+          <div className="flex flex-col items-start py-12">
+            <h4 className="text-lg font-medium text-zinc-200 mb-2">System Logs</h4>
+            <p className="text-zinc-500 text-sm max-w-md">
+              Detailed API logs, usage metrics, and error tracing will be available here. This feature is currently in preview.
+            </p>
+          </div>
+        )}
+        </div>
       </div>
     </div>
   );

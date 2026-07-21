@@ -1,13 +1,19 @@
 import express from 'express';
+import os from 'os';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
+import pinoHttp from 'pino-http';
+import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+import mongoose from 'mongoose';
+import logger from './utils/logger.js';
 
 // Load environment variables FIRST - with explicit path
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -24,6 +30,7 @@ import connectDB from './config/database.js';
 import { getDBStatus } from './utils/dbUtils.js';
 import { initializeDatabase, checkDatabaseHealth, checkAudioDirectoryHealth } from './utils/initDB.js';
 import { initializeSharedAudioLibrary } from './services/audioCache.js';
+import { initCache } from './utils/cacheUtils.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -33,15 +40,16 @@ import workspaceRoutes from './routes/workspaces.js';
 import settingsRoutes from './routes/settings.js';
 import developerRoutes from './routes/developer.js';
 import apiRoutes from './routes/api.js';
-import { setupMediaStreamWebSocket } from './routes/mediaStream.js';
+import { setupMediaStreamWebSocket } from './controllers/mediaStreamController.js';
 import { initializeLiveCallWebSocket } from './websocket/liveCallServer.js';
-import { initTelegramBot } from './services/botService.js';
 import { initScheduler } from './services/schedulerService.js';
-import logger from './utils/logger.js';
 import http from 'http';
+import statsRoutes from './routes/stats.js';
+import leadsRoutes from './routes/leads.js';
 
 
 const app = express();
+app.use(compression());
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 10000;
 
@@ -79,15 +87,24 @@ app.use(helmet({
   crossOriginOpenerPolicy: false // Allow OAuth popups to communicate back
 }));
 
-// Request logging middleware
+// Correlation ID middleware
 app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    logger.request(req, res, duration);
-  });
+  req.id = req.headers['x-request-id'] || uuidv4();
+  res.setHeader('x-request-id', req.id);
   next();
 });
+
+// Request logging middleware using Pino
+app.use(pinoHttp({
+  logger: logger.pino,
+  genReqId: function (req) { return req.id; },
+  autoLogging: {
+    ignore: (req) => {
+      // Ignore static assets or frequent polling if needed
+      return req.url.startsWith('/sample-audio') || req.url === '/api/v1/health';
+    }
+  }
+}));
 
 // CORS configuration - Allow all origins in development
 const corsOptions = {
@@ -109,15 +126,8 @@ app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', 1);
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for health checks
-  skip: (req) => req.path === '/api/health' || req.path === '/api/calls/voices/health'
-});
-app.use(limiter);
+import { generalLimiter } from './middleware/rateLimiter.js';
+app.use(generalLimiter);
 
 // Connect to MongoDB and initialize
 const startServer = async () => {
@@ -126,6 +136,7 @@ const startServer = async () => {
     logger.info('Initializing services...');
     await connectDB();
     await initializeDatabase();
+    await initCache();
 
     // Log configuration status
     logger.info('Service Configuration:');
@@ -176,8 +187,6 @@ const startServer = async () => {
       }
     });
 
-    // Initialize Telegram Bot
-    initTelegramBot();
 
     // Initialize Intelligent Call Scheduler
     initScheduler();
@@ -185,7 +194,34 @@ const startServer = async () => {
     // Start the server
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.success(`SERVER RUNNING ON PORT ${PORT} (0.0.0.0)`);
-      logger.info(`Health Check: http://localhost:${PORT}/api/health`);
+      logger.info(`Health Check: http://localhost:${PORT}/api/v1/health`);
+    });
+
+    // Graceful Shutdown Handler
+    const gracefulShutdown = () => {
+      logger.info('Received kill signal, shutting down gracefully.');
+      httpServer.close(() => {
+        logger.info('Closed out remaining connections.');
+        mongoose.connection.close(false).then(() => {
+          logger.info('MongoDb connection closed.');
+          process.exit(0);
+        });
+      });
+
+      setTimeout(() => {
+        logger.error('Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+
+    // Nodemon restart handler
+    process.once('SIGUSR2', () => {
+      httpServer.close(() => {
+        process.kill(process.pid, 'SIGUSR2');
+      });
     });
   } catch (error) {
     logger.error('CRITICAL STARTUP ERROR', error);
@@ -194,27 +230,32 @@ const startServer = async () => {
 };
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/modules', moduleRoutes);
-app.use('/api/calls', callRoutes);
-app.use('/api/workspaces', workspaceRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/developer', developerRoutes);
-app.use('/api/stats', (await import('./routes/stats.js')).default);
-app.use('/api', apiRoutes);
-app.use('/api/leads', (await import('./routes/leads.js')).default);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/modules', moduleRoutes);
+app.use('/api/v1/calls', callRoutes);
+app.use('/api/v1/workspaces', workspaceRoutes);
+app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/developer', developerRoutes);
+app.use('/api/v1/stats', statsRoutes);
+app.use('/api/v1', apiRoutes);
+app.use('/api/v1/leads', leadsRoutes);
 
 // Health check with detailed database info
-app.get('/api/health', async (req, res) => {
+app.get('/api/v1/health', async (req, res) => {
   try {
     const dbHealth = await checkDatabaseHealth();
     const audioHealth = await checkAudioDirectoryHealth();
 
     res.json({
       status: 'OK',
-      message: 'Vok.AI API is running',
+      message: 'Voicely API is running',
       database: dbHealth,
       audio: audioHealth,
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        load: os.loadavg()
+      },
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV
     });
@@ -226,6 +267,23 @@ app.get('/api/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Latency Metrics Endpoint (7.4)
+app.get('/api/v1/metrics', (req, res) => {
+  res.json({
+    uptime: process.uptime(),
+    memory: {
+      rss: process.memoryUsage().rss,
+      heapTotal: process.memoryUsage().heapTotal,
+      heapUsed: process.memoryUsage().heapUsed,
+    },
+    cpu: {
+      loadAvg: os.loadavg(),
+      cpus: os.cpus().length
+    },
+    pid: process.pid
+  });
 });
 
 // Database status endpoint

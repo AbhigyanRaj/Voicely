@@ -10,12 +10,13 @@ import { getDemoAgentModule } from '../config/demoAgents.js';
  * Manages conversation history and feeds it to Gemini Streaming
  */
 class StreamingCallHandler extends EventEmitter {
-  constructor(callSid, moduleId, phoneNumber, customerName) {
+  constructor(callSid, moduleId, phoneNumber, customerName, llmApiKey = null) {
     super();
     this.callSid = callSid;
     this.moduleId = moduleId;
     this.phoneNumber = phoneNumber;
     this.customerName = customerName;
+    this.llmApiKey = llmApiKey;
 
     this.chatHistory = '';
     this.systemPrompt = '';
@@ -42,9 +43,9 @@ class StreamingCallHandler extends EventEmitter {
         if (!this.module) throw new Error('Module not found');
       }
 
-      // 3-minute hard limit for sandbox calls, exempting user@gmail.com
+      // 3-minute hard limit for sandbox calls, exempting admins
       if (this.call && this.callSid.startsWith('browser_sandbox_')) {
-        const isAdmin = this.call.userId && this.call.userId.email === 'user@gmail.com';
+        const isAdmin = this.call.userId && this.call.userId.isAdmin;
         if (!isAdmin) {
           logger.info(`Applying 3-minute sandbox limit for call ${this.callSid}`);
           setTimeout(() => {
@@ -146,15 +147,16 @@ CRUCIAL RULES:
             this.state = 'SPEAKING';
           }
           this.emit('aiResponseChunk', chunkText);
-        }
+        },
+        this.llmApiKey
       );
 
       this.chatHistory += `\nAI: ${greeting}`;
       
-      // Update call transcript in DB
+      // Update call transcript in DB (async, fire-and-forget)
       if (this.call) {
         this.call.transcription = this.chatHistory;
-        await this.call.save();
+        this.call.save().catch(err => logger.error(`Error saving greeting transcript: ${err.message}`));
       }
 
       this.emit('aiResponseComplete', greeting);
@@ -208,6 +210,7 @@ CRUCIAL RULES:
       this.emit('aiThinking');
 
       const startLLM = performance.now();
+      const llmStartTime = performance.now();
       // Stream the AI response
       const fullResponse = await generateConversationalResponseStream(
         this.systemPrompt,
@@ -215,11 +218,12 @@ CRUCIAL RULES:
         (chunkText) => {
           if (this.state !== 'SPEAKING') {
             this.state = 'SPEAKING';
-            const timeToFirstSpeak = performance.now() - startTotal;
-            logger.info(`[LATENCY TIMER] First speech output triggered in ${timeToFirstSpeak.toFixed(1)}ms from user final transcript!`);
+            const firstChunkDuration = performance.now() - llmStartTime;
+            logger.info(`[LATENCY TIMER] AI First TTFB: ${firstChunkDuration.toFixed(1)}ms`);
           }
           this.emit('aiResponseChunk', chunkText);
-        }
+        },
+        this.llmApiKey
       );
 
       const llmDuration = performance.now() - startLLM;
@@ -230,10 +234,10 @@ CRUCIAL RULES:
       logger.info(`AI: "${fullResponse}"`);
 
       const startSave = performance.now();
-      // Update call transcript in DB
+      // Update call transcript in DB (async, fire-and-forget)
       if (this.call) {
         this.call.transcription = this.chatHistory;
-        await this.call.save();
+        this.call.save().catch(err => logger.error(`Error saving mid-call transcript: ${err.message}`));
       }
       const saveDuration = performance.now() - startSave;
       logger.info(`[LATENCY TIMER] Database transcription save took ${saveDuration.toFixed(1)}ms`);

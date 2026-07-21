@@ -419,7 +419,7 @@ export function listAvailableVoices() {
  * Test all TTS services
  */
 export async function testAllTTSServices() {
-
+  const results = [];
   return results;
 }
 

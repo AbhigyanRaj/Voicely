@@ -146,7 +146,8 @@ const LiveCallModal: React.FC<LiveCallModalProps> = ({
       try {
         if (wsRef.current) wsRef.current.close();
         
-        const wsUrl = `${getWsBaseUrl()}/live-call?callId=${callId}`;
+        const token = getStoredToken();
+        const wsUrl = `${getWsBaseUrl()}/live-call?callId=${callId}${token ? `&token=${token}` : ''}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 

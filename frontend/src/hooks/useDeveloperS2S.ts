@@ -82,7 +82,7 @@ export const useDeveloperS2S = () => {
       audioContextRef.current = audioContext;
 
       // 2. Connect WebSocket
-      const wsUrl = getApiBaseUrl().replace('http', 'ws').replace('/api', '') + `/api/v1/stream?token=${token}`;
+      const wsUrl = getApiBaseUrl().replace('http', 'ws').replace('/api/v1', '') + `/api/v1/stream?token=${token}`;
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;

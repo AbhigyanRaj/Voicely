@@ -43,7 +43,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             auth.setStoredUser(profile);
           }
         } catch (error) {
-          console.error('Failed to refresh profile:', error);
+          // Token expiry handling
+          console.warn('Token expired or invalid, signing out');
+          await auth.signOutUser();
+          setUser(null);
         }
       }
       setLoading(false);
@@ -60,18 +63,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const authResponse = await auth.signInWithGoogle(userInfo);
         if (authResponse.success) setUser(authResponse.user);
       } catch (error) {
-        console.error('Google login error:', error);
         throw error;
       }
     },
-    onError: (error) => console.error('Google login error:', error),
+    onError: () => {},
   });
 
   const signIn = async () => {
     try {
       googleLogin();
     } catch (error) {
-      console.error('Sign in error:', error);
       throw error;
     }
   };
@@ -81,7 +82,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await auth.signOutUser();
       setUser(null);
     } catch (error) {
-      console.error('Sign out error:', error);
       throw error;
     }
   };

@@ -7,14 +7,14 @@ import logger from '../utils/logger.js';
  * Returns raw telephony MULAW 8000Hz audio (headerless) with sub-150ms network latency.
  */
 class StreamingDeepgramTTS extends EventEmitter {
-    constructor(voice = 'aura-asteria-en', isWebCall = false) {
+    constructor(voice = 'aura-asteria-en', isWebCall = false, apiKey = null) {
         super();
         this.voice = voice;
         this.isWebCall = isWebCall;
         this.textBuffer = '';
         this.isProcessing = false;
         this.audioQueue = []; // Queue of text clauses waiting to be synthesized
-        this.apiKey = process.env.DEEPGRAM_API_KEY;
+        this.apiKey = apiKey || process.env.DEEPGRAM_API_KEY;
     }
 
     /**

@@ -1,5 +1,6 @@
 import express from 'express';
 import SiteStat from '../models/SiteStat.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.post('/visitors', async (req, res) => {
 
         res.json({ success: true, count: stat.visitorCount });
     } catch (error) {
-        console.error('Error tracking visitor:', error);
+        logger.error('Error tracking visitor:', error);
         res.status(500).json({ error: 'Failed to update visitor count' });
     }
 });

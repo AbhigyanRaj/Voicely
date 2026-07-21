@@ -9,8 +9,22 @@ export const getModules = async (req, res) => {
         if (req.user.currentWorkspace) {
             query.workspaceId = req.user.currentWorkspace._id;
         }
-        const modules = await Module.find(query);
-        res.json({ success: true, modules });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
+        const modules = await Module.find(query)
+            .skip(skip)
+            .limit(limit)
+            .lean();
+            
+        const total = await Module.countDocuments(query);
+        
+        res.json({ 
+            success: true, 
+            modules,
+            pagination: { total, page, limit, pages: Math.ceil(total / limit) }
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch modules', message: error.message });
     }
@@ -53,7 +67,7 @@ export const getModuleById = async (req, res) => {
         if (req.user.currentWorkspace) {
             query.workspaceId = req.user.currentWorkspace._id;
         }
-        const module = await Module.findOne(query);
+        const module = await Module.findOne(query).lean();
         if (!module) return res.status(404).json({ error: 'Module not found' });
         res.json({ success: true, module });
     } catch (error) {

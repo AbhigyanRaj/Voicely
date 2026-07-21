@@ -92,8 +92,42 @@ export const parseChatHistoryToMessages = (systemPrompt, chatHistory) => {
   return messages;
 };
 
-export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk) => {
-  const apiKey = process.env.GROQ_API_KEY;
+export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk, llmApiKey = null) => {
+  const apiKey = llmApiKey || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+  const isGroq = apiKey && apiKey.startsWith('gsk_');
+  
+  if (!isGroq) {
+    // Gemini Implementation
+    const localGenAI = new GoogleGenerativeAI(apiKey);
+    const model = localGenAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+    const messages = parseChatHistoryToMessages(systemPrompt, chatHistory);
+    // Convert to Gemini format
+    const geminiMessages = messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : m.role === 'system' ? 'user' : 'user',
+      parts: [{ text: m.content }]
+    }));
+    // Add system prompt if it exists
+    if (systemPrompt) {
+      geminiMessages.unshift({ role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemPrompt}` }]});
+      geminiMessages.unshift({ role: 'model', parts: [{ text: `Understood. I will follow these instructions.` }]});
+    }
+
+    try {
+      const result = await model.generateContentStream({ contents: geminiMessages });
+      let fullText = '';
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        fullText += chunkText;
+        if (onChunk) onChunk(chunkText);
+      }
+      return fullText;
+    } catch (error) {
+      logger.error('Gemini conversational stream error', error);
+      throw error;
+    }
+  }
+
+  // Groq Implementation
   const start = performance.now();
   logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: llama-3.3-70b-versatile)`);
 

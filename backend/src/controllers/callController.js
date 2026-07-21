@@ -1,3 +1,4 @@
+import twilio from 'twilio';
 import Call from '../models/Call.js';
 import Module from '../models/Module.js';
 import * as callService from '../services/callService.js';
@@ -5,7 +6,6 @@ import { createTwiMLResponse, addMediaStream } from '../utils/twimlHelpers.js';
 import { getTranslation } from '../config/translations.js';
 import { formatPhoneNumber } from '../utils/phoneUtils.js';
 import { broadcastCallStatus } from '../websocket/liveCallServer.js';
-import { sendUpdateByUserId } from '../services/botService.js';
 import * as leadService from '../services/leadService.js';
 import logger from '../utils/logger.js';
 import { getDemoAgentModule } from '../config/demoAgents.js';
@@ -37,6 +37,23 @@ export const initiateCall = async (req, res) => {
         const finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
         const finalProvider = ttsProvider || module.ttsProvider || 'google';
 
+        // BYOK Validation (Campaigns only)
+        // Ensure user has configured their API keys
+        const ProviderCredential = (await import('../models/ProviderCredential.js')).default;
+        const userProviders = await ProviderCredential.find({ userId });
+        const configuredProviderNames = userProviders.map(p => p.providerName);
+        
+        const requiredProviders = ['twilio', 'deepgram', 'gemini', finalProvider];
+        const missingProviders = requiredProviders.filter(p => !configuredProviderNames.includes(p));
+        
+        if (missingProviders.length > 0) {
+            return res.status(400).json({ 
+                error: 'MISSING_API_KEYS', 
+                message: `You must configure API keys for: ${missingProviders.join(', ')}`,
+                missingProviders
+            });
+        }
+
         const call = await callService.initiateCall({
             moduleId,
             phoneNumber: formattedPhone,
@@ -50,6 +67,7 @@ export const initiateCall = async (req, res) => {
             userId,
             workspaceId: req.user.currentWorkspace?._id,
             moduleId,
+            moduleName: module.name,
             customerName: customerName.trim(),
             phoneNumber: formattedPhone,
             twilioCallSid: call.sid,
@@ -124,6 +142,7 @@ export const initiateBrowserSandboxCall = async (req, res) => {
             userId,
             workspaceId,
             moduleId: isDemo ? undefined : moduleId,
+            moduleName: module.name,
             demoAgentId: isDemo ? moduleId : undefined,
             customerName: customerName.trim(),
             phoneNumber: '+1000000000', // Mock Sandbox phone number
@@ -237,23 +256,6 @@ export const handleStatus = async (req, res) => {
         );
         if (call) {
             broadcastCallStatus(call._id.toString(), CallStatus, { duration: CallDuration });
-
-            // Telegram Notification for major status changes
-            const evalResult = call.evaluation?.result || 'PENDING';
-            const callSummary = call.summary || 'Awaiting post-call analysis.';
-            const statusMap = {
-                'ringing': 'CALL_STATUS: RINGING',
-                'answered': 'CALL_STATUS: ANSWERED',
-                'in-progress': 'CALL_STATUS: IN_PROGRESS',
-                'completed': `CALL_STATUS: COMPLETED\nDURATION: ${CallDuration}s\nEVALUATION: ${evalResult}\nSUMMARY: ${callSummary}`,
-                'failed': 'CALL_STATUS: FAILED',
-                'busy': 'CALL_STATUS: BUSY',
-                'no-answer': 'CALL_STATUS: NO_ANSWER'
-            };
-
-            if (statusMap[CallStatus] && call.source === 'telegram') {
-                await sendUpdateByUserId(call.userId, `${statusMap[CallStatus]}\nDEST: ${call.phoneNumber}`);
-            }
         }
         res.sendStatus(200);
     } catch (error) {
@@ -280,13 +282,24 @@ export const getCallHistory = async (req, res) => {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .populate('moduleId', 'name');
+            .populate('moduleId', 'name')
+            .lean();
 
         const total = await Call.countDocuments(query);
 
+        // Patch response to avoid frontend crashes if module was deleted
+        const formattedCalls = calls.map(callObj => {
+            if (!callObj.moduleId && callObj.moduleName) {
+                callObj.moduleId = { name: `${callObj.moduleName} (Deleted)` };
+            } else if (!callObj.moduleId) {
+                callObj.moduleId = { name: 'Deleted Module' };
+            }
+            return callObj;
+        });
+
         res.json({
             success: true,
-            calls,
+            calls: formattedCalls,
             pagination: {
                 total,
                 page,
@@ -313,13 +326,21 @@ export const getCallById = async (req, res) => {
 
         // Check ownership
         if (call.userId.toString() !== req.user._id.toString()) {
-            console.warn(`[getCallById] Ownership mismatch! Call.userId: ${call.userId}, Req.user._id: ${req.user._id}`);
+            logger.warn(`[getCallById] Ownership mismatch! Call.userId: ${call.userId}, Req.user._id: ${req.user._id}`);
             return res.status(403).json({ error: 'Unauthorized access to call' });
+        }
+
+        // Patch response to avoid frontend crashes if module was deleted
+        const callObj = call.toObject();
+        if (!callObj.moduleId && callObj.moduleName) {
+            callObj.moduleId = { name: `${callObj.moduleName} (Deleted)` };
+        } else if (!callObj.moduleId) {
+            callObj.moduleId = { name: 'Deleted Module' };
         }
 
         res.json({
             success: true,
-            call
+            call: callObj
         });
     } catch (error) {
         logger.error('Error fetching call', error);

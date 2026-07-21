@@ -13,13 +13,7 @@ export interface User {
     endDate?: Date;
   };
   totalCallsMade: number;
-  telegram?: {
-    chatId: string | null;
-    linkingCode?: {
-      code: string | null;
-      expiresAt: Date | null;
-    };
-  };
+
   currentWorkspace?: {
     _id: string;
     name: string;
@@ -60,7 +54,7 @@ export const removeStoredUser = () => {
 };
 
 // Google OAuth authentication
-export const signInWithGoogle = async (googleUser: any): Promise<AuthResponse> => {
+export const signInWithGoogle = async (googleUser: { email: string; name: string; sub: string }): Promise<AuthResponse> => {
   try {
     const { email, name, sub: googleId } = googleUser;
     const response = await fetch(`${getApiBaseUrl()}/auth/google`, {
@@ -168,7 +162,6 @@ export const getUserProfile = async (): Promise<User | null> => {
 
 export const createUserProfile = async (): Promise<void> => {
   // This is handled by the backend during Google OAuth
-  console.log('User profile creation handled by backend');
 };
 
 export const incrementUserTokens = async (amount: number): Promise<void> => {
@@ -241,6 +234,8 @@ export interface VoiceModule {
     _id?: string;
   }>;
   systemPrompt?: string;
+  ttsProvider?: string;
+  selectedLanguage?: string;
   createdAt: number;
 }
 
@@ -249,8 +244,6 @@ export const addVoiceModule = async (name: string, questions: string[], systemPr
   if (!token) throw new Error('No authentication token');
 
   try {
-    console.log('Creating module with data:', { name, questions });
-
     const response = await fetch(`${getApiBaseUrl()}/modules`, {
       method: 'POST',
       headers: {
@@ -274,7 +267,6 @@ export const addVoiceModule = async (name: string, questions: string[], systemPr
 
     if (response.ok) {
       const data = await response.json();
-      console.log('Module created successfully:', data);
       return data.module._id;
     }
 
@@ -301,20 +293,34 @@ export const getUserModules = async (): Promise<VoiceModule[]> => {
 
     if (response.ok) {
       const data = await response.json();
-      console.log('Modules data from backend:', data);
 
       // Transform the backend data to match our interface
-      const transformedModules = data.modules.map((module: any) => ({
+      const transformedModules = data.modules.map((module: {
+        _id: string;
+        userId: string;
+        name: string;
+        systemPrompt?: string;
+        ttsProvider?: string;
+        selectedLanguage?: string;
+        questions: Array<{
+          question: string;
+          order: number;
+          required: boolean;
+          _id?: string;
+        }>;
+        createdAt: string;
+      }) => ({
         id: module._id, // Set id to _id for frontend use
         _id: module._id,
         userId: module.userId,
         name: module.name,
         systemPrompt: module.systemPrompt || '',
+        ttsProvider: module.ttsProvider || 'google',
+        selectedLanguage: module.selectedLanguage || 'en-IN',
         questions: module.questions || [],
         createdAt: new Date(module.createdAt).getTime()
       }));
 
-      console.log('Transformed modules:', transformedModules);
       return transformedModules;
     }
 
@@ -340,8 +346,6 @@ export const updateVoiceModule = async (id: string, data: Partial<VoiceModule>):
         return q;
       });
     }
-
-    console.log('Updating module with data:', transformedData);
 
     const response = await fetch(`${getApiBaseUrl()}/modules/${id}`, {
       method: 'PUT',
@@ -372,8 +376,6 @@ export const deleteVoiceModule = async (id: string): Promise<void> => {
   }
 
   try {
-    console.log('Deleting module with ID:', id);
-
     const response = await fetch(`${getApiBaseUrl()}/modules/${id}`, {
       method: 'DELETE',
       headers: {
@@ -386,34 +388,8 @@ export const deleteVoiceModule = async (id: string): Promise<void> => {
       console.error('Module deletion failed:', errorData);
       throw new Error(errorData.message || 'Failed to delete module');
     }
-
-    console.log('Module deleted successfully');
   } catch (error) {
     console.error('Error deleting module:', error);
-    throw error;
-  }
-};
-
-export const generateTelegramCode = async (): Promise<{ success: boolean; code: string; expiresAt: string }> => {
-  const token = getStoredToken();
-  if (!token) throw new Error('No authentication token');
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/auth/telegram/link-code`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to generate code');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error generating Telegram code:', error);
     throw error;
   }
 };

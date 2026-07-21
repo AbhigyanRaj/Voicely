@@ -1,4 +1,5 @@
 import { WebSocketServer } from 'ws';
+import jwt from 'jsonwebtoken';
 import logger from '../utils/logger.js';
 
 // Store active WebSocket connections per call
@@ -19,15 +20,26 @@ export function initializeLiveCallWebSocket(server = null) {
     noServer: true
   });
 
-  liveCallWss.on('connection', (ws, req) => {
+  liveCallWss.on('connection', async (ws, req) => {
     // Extract callId from URL path: /live-call?callId=xxx
     const url = new URL(req.url, `http://${req.headers.host}`);
     const callId = url.searchParams.get('callId');
+    const token = url.searchParams.get('token');
 
     if (!callId) {
       logger.warn('LiveCall WS connection rejected: No callId provided');
       ws.close(1008, 'Call ID required');
       return;
+    }
+
+    if (token && token !== 'null') {
+      try {
+        jwt.verify(token, process.env.JWT_SECRET);
+      } catch (err) {
+        logger.warn('LiveCall WS connection rejected: Invalid token');
+        ws.close(1008, 'Unauthorized: Invalid token');
+        return;
+      }
     }
 
     logger.debug(`LiveCall WS client connected for call: ${callId}`);
@@ -36,16 +48,35 @@ export function initializeLiveCallWebSocket(server = null) {
     if (!liveCallClients.has(callId)) {
       liveCallClients.set(callId, new Set());
     }
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
     liveCallClients.get(callId).add(ws);
 
-    // Send initial connection confirmation and history
-    const callState = callStates.get(callId) || { history: [], status: 'connecting' };
+    // Fetch historical connection data from DB
+    let callHistory = [];
+    let callStatus = 'connecting';
+    try {
+      const Call = (await import('../models/Call.js')).default;
+      const dbCall = await Call.findById(callId).select('liveTranscript status');
+      if (dbCall) {
+        callHistory = dbCall.liveTranscript || [];
+        callStatus = dbCall.status;
+      }
+    } catch (err) {
+      logger.error(`Error fetching DB call history for ${callId}:`, err);
+    }
     
+    // Also merge with any fast-moving in-memory state if DB is lagging
+    const callState = callStates.get(callId) || { history: [], status: callStatus };
+    const mergedHistory = callHistory.length > callState.history.length ? callHistory : callState.history;
+
     ws.send(JSON.stringify({
       type: 'connection_established',
       callId: callId,
       status: callState.status,
-      history: callState.history,
+      history: mergedHistory,
       timestamp: new Date().toISOString(),
       message: 'Connected to live call transcript'
     }));
@@ -59,7 +90,7 @@ export function initializeLiveCallWebSocket(server = null) {
           logger.info(`Received manual intervention for call ${callId}: "${text}"`);
           
           // Import mediaStream dynamically to avoid circular dependencies
-          const { handleManualIntervention } = await import('../routes/mediaStream.js');
+          const { handleManualIntervention } = await import('../controllers/mediaStreamController.js');
           await handleManualIntervention(callId, text);
           
           // Acknowledge intervention
@@ -96,14 +127,22 @@ export function initializeLiveCallWebSocket(server = null) {
       }
     });
 
-    // Send ping to keep connection alive
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === ws.OPEN) {
-        ws.ping();
-      } else {
-        clearInterval(pingInterval);
+  });
+
+  // Global heartbeat interval for liveCallWss
+  const interval = setInterval(() => {
+    liveCallWss.clients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        logger.debug('Terminating dead LiveCall WS client');
+        return ws.terminate();
       }
-    }, 30000); // Ping every 30 seconds
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+
+  liveCallWss.on('close', () => {
+    clearInterval(interval);
   });
 
   logger.success('Live Call WebSocket server initialized (Manual Dispatch Mode)');
@@ -133,12 +172,21 @@ export function broadcastTranscriptUpdate(callId, data) {
     );
 
     if (!isDuplicate) {
-      callState.history.push({
+      const newEntry = {
         speaker: data.source === 'ai' ? 'AI' : 'User',
         text: data.text,
         timestamp: new Date().toISOString(),
         type: data.type || (data.source === 'ai' ? 'question' : 'response')
-      });
+      };
+      callState.history.push(newEntry);
+      
+      // Async DB Push (fire and forget)
+      import('../models/Call.js').then(m => {
+        m.default.findByIdAndUpdate(callId, {
+          $push: { liveTranscript: newEntry }
+        }).catch(err => logger.error(`Error saving liveTranscript for ${callId}:`, err));
+      }).catch(err => logger.error(`Error importing Call model:`, err));
+
       logger.debug(`Added final transcript to history for call ${callId}`);
     }
   }

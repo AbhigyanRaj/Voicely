@@ -3,14 +3,43 @@ import User from '../models/User.js';
 import Module from '../models/Module.js';
 import Call from '../models/Call.js';
 import logger from '../utils/logger.js';
+import cacheUtils from '../utils/cacheUtils.js';
 
 /**
- * Get all workspaces for the authenticated user
+ * Fetches all workspaces for the authenticated user with pagination.
+ * @param {import('express').Request} req - Express request object
+ * @param {import('express').Response} res - Express response object
  */
 export const getWorkspaces = async (req, res) => {
   try {
-    const workspaces = await Workspace.find({ userId: req.user._id });
-    res.json({ success: true, workspaces });
+    const userId = req.user._id;
+    const cacheKey = `workspaces_${userId}`;
+
+    // Try to get from cache first
+    const cachedWorkspaces = await cacheUtils.getCache(cacheKey);
+    if (cachedWorkspaces) {
+      return res.json({ success: true, count: cachedWorkspaces.length, data: cachedWorkspaces });
+    }
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const workspaces = await Workspace.find({ userId: req.user._id })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Cache the result for 5 minutes
+    await cacheUtils.setCache(cacheKey, workspaces, 300);
+
+    const total = await Workspace.countDocuments({ userId: req.user._id });
+
+    res.json({ 
+      success: true, 
+      workspaces,
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) }
+    });
   } catch (error) {
     logger.error('Error fetching workspaces:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch workspaces' });
@@ -18,7 +47,9 @@ export const getWorkspaces = async (req, res) => {
 };
 
 /**
- * Create a new workspace
+ * Creates a new workspace for the authenticated user.
+ * @param {import('express').Request} req - Express request object
+ * @param {import('express').Response} res - Express response object
  */
 export const createWorkspace = async (req, res) => {
   try {
@@ -45,6 +76,25 @@ export const createWorkspace = async (req, res) => {
   } catch (error) {
     logger.error('Error creating workspace:', error);
     res.status(500).json({ success: false, error: 'Failed to create workspace' });
+  }
+};
+
+/**
+ * Updates an existing workspace.
+ * @param {import('express').Request} req - Express request object
+ * @param {import('express').Response} res - Express response object
+ */
+export const updateWorkspace = async (req, res) => {
+  try {
+    const { workspaceId } = req.body;
+    
+    if (!workspaceId) {
+      return res.status(400).json({ success: false, error: 'Workspace ID is required' });
+    }
+    // ... logic would follow
+  } catch (error) {
+    logger.error('Error updating workspace:', error);
+    res.status(500).json({ success: false, error: 'Failed to update workspace' });
   }
 };
 

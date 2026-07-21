@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
+import { useQuery } from '@tanstack/react-query';
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, RadarChart, PolarGrid, 
-  PolarAngleAxis, Radar, Legend, AreaChart, Area
-} from 'recharts';
-import { 
-  PhoneCall, RefreshCw, Clock, Eye,
-  AlertTriangle, X, Activity, TrendingUp, XCircle, CheckCircle, 
-  Target, PieChart as PieChartIcon, ShoppingCart, Calendar, Stethoscope
+  RefreshCw, Eye,
+  AlertTriangle, X, Activity, XCircle, CheckCircle, 
+  Target, PieChart as PieChartIcon, Calendar
 } from 'lucide-react';
 import { useAuth } from "../contexts/AuthContext";
 import * as auth from "../lib/auth";
 import { api } from "../lib/api";
 import LiveCallModal from "./LiveCallModal";
-import LeadTimeline from "./LeadTimeline";
+import { Skeleton } from "./ui/skeleton";
+import { StatCards } from "./analytics/StatCards";
+import { Charts } from "./analytics/Charts";
+import { BulkCallStats } from "./analytics/BulkCallStats";
+import { RecentCallsList } from "./analytics/RecentCallsList";
 
 interface CallData {
   _id: string;
@@ -33,7 +33,7 @@ interface CallData {
   callType?: 'individual' | 'bulk';
   batchId?: string;
   evaluation?: {
-    result: 'YES' | 'NO' | 'MAYBE' | 'INVESTIGATION_REQUIRED' | 'DECLINED';
+    result: 'INTERESTED' | 'QUALIFIED' | 'UNQUALIFIED' | 'NURTURE' | 'URGENT' | 'BOOKED' | 'YES' | 'NO' | 'MAYBE' | 'INVESTIGATION_REQUIRED' | 'DECLINED';
     comments: string[];
     analysis?: {
       sentiment: 'Enthusiastic' | 'Hesitant' | 'Annoyed' | 'Confused' | 'Neutral';
@@ -270,12 +270,10 @@ const DEMO_DATA: AnalyticsData = {
 
 const AnalyticsPage: React.FC = () => {
   const { user } = useAuth();
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
-  const [error, setError] = useState("");
   const [selectedModuleFilter, setSelectedModuleFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'evaluations' | 'bulk' | 'calls'>('dashboard');
   const [liveCallModal, setLiveCallModal] = useState<{
     callId: string;
     customerName: string;
@@ -284,239 +282,200 @@ const AnalyticsPage: React.FC = () => {
   const [intelModal, setIntelModal] = useState<CallData | null>(null);
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
 
-  const fetchAnalyticsData = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    setError("");
-    
-    try {
+  const { data: queryData, isLoading, error, refetch } = useQuery({
+    queryKey: ['analyticsData'],
+    queryFn: async () => {
       const token = auth.getStoredToken();
-      if (!token) {
-        setError("Authentication required");
-        return;
-      }
-
-      // Fetch call history from backend using the API service
+      if (!token) throw new Error("Authentication required");
       const data = await api.getCallHistory(token);
-      
-      if (!data.success) {
-        setError("Failed to fetch analytics data");
-        return;
-      }
+      if (!data.success) throw new Error("Failed to fetch analytics data");
+      return data.calls || [];
+    },
+    enabled: !!user && !isDemoMode,
+  });
 
-      // Process the call data to create analytics
-      const calls = data.calls || [];
-      
-      // Filter calls based on time range
-      const now = new Date();
-      let filteredCalls = calls;
-      
-      if (timeRange === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= weekAgo);
-      } else if (timeRange === 'month') {
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= monthAgo);
-      } else if (timeRange === 'year') {
-        const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= yearAgo);
-      }
-      
-      // Calculate analytics from filtered data
-      const totalCalls = filteredCalls.length;
-      const completedCalls = filteredCalls.filter((call: CallData) => call.status === 'completed').length;
-      const failedCalls = filteredCalls.filter((call: CallData) => ['failed', 'busy', 'no-answer', 'canceled'].includes(call.status)).length;
-      
-      // Fix duration calculation - duration is in seconds, convert to minutes
-      const totalDuration = filteredCalls.reduce((sum: number, call: CallData) => sum + (call.duration || 0), 0);
-      const averageDuration = totalCalls > 0 ? totalDuration / totalCalls : 0;
-      
-      const successRate = totalCalls > 0 ? (completedCalls / totalCalls) * 100 : 0;
-      
-      // Calculate time-based metrics
+  const analyticsData = useMemo(() => {
+    if (isDemoMode) return DEMO_DATA;
+    if (!queryData) return null;
+    
+    const calls = queryData;
+    const now = new Date();
+    let filteredCalls = calls;
+    
+    if (timeRange === 'week') {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= weekAgo);
+    } else if (timeRange === 'month') {
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      
-      const callsThisWeek = calls.filter((call: CallData) => 
-        new Date(call.createdAt) >= weekAgo
-      ).length;
-      
-      const callsThisMonth = calls.filter((call: CallData) => 
-        new Date(call.createdAt) >= monthAgo
-      ).length;
-      
-      // Calculate top modules
-      const moduleStats: { [key: string]: number } = {};
-      filteredCalls.forEach((call: CallData) => {
-        const moduleName = call.moduleName || 'Unknown Module';
-        moduleStats[moduleName] = (moduleStats[moduleName] || 0) + 1;
-      });
-      
-      const topModules = Object.entries(moduleStats)
-        .map(([name, calls]) => ({ name, calls }))
-        .sort((a, b) => b.calls - a.calls)
-        .slice(0, 5);
-      
-      // Calculate status distribution
-      const statusCounts: { [key: string]: number } = {};
-      filteredCalls.forEach((call: CallData) => {
-        statusCounts[call.status] = (statusCounts[call.status] || 0) + 1;
-      });
-      
-      const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
-        status,
-        count,
-        percentage: totalCalls > 0 ? (count / totalCalls) * 100 : 0
-      }));
-      
-      // Calculate daily calls for the last 7 days
-      const dailyCalls = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-        const dateStr = date.toISOString().split('T')[0];
-        const dayCalls = filteredCalls.filter((call: CallData) => 
-          call.createdAt.startsWith(dateStr)
-        ).length;
-        dailyCalls.push({ date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), count: dayCalls });
-      }
-      
-      // Get recent calls (last 10)
-      const recentCalls = filteredCalls
-        .sort((a: CallData, b: CallData) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 10);
-
-      const getResultKey = (result: string = ''): 'yes' | 'no' | 'maybe' | null => {
-        const r = result.toUpperCase();
-        if (['YES', 'BOOKED', 'PURCHASED', 'QUALIFIED'].includes(r)) return 'yes';
-        if (['NO', 'GENERAL_INQUIRY', 'FEEDBACK_RECEIVED', 'UNQUALIFIED', 'DECLINED'].includes(r)) return 'no';
-        if (['MAYBE', 'INTERESTED', 'URGENT', 'ABANDONED_CART', 'NURTURE', 'INVESTIGATION_REQUIRED'].includes(r)) return 'maybe';
-        return null;
-      };
-
-      const completedCallsWithResults = filteredCalls.filter((call: CallData) => 
-        call.evaluation?.result
-      );
-      
-      const resultDistribution = { yes: 0, no: 0, maybe: 0, total: 0 };
-      const intentDistribution = { High: 0, Medium: 0, Low: 0 };
-      const moduleWiseResults: { [key: string]: { yes: number; no: number; maybe: number; total: number } } = {};
-      const objectionCounts: { [key: string]: number } = {};
-
-      completedCallsWithResults.forEach((call: CallData) => {
-        const key = getResultKey(call.evaluation?.result);
-        if (!key) return;
-
-        // Intent Aggregation
-        const intent = (call.evaluation?.analysis?.intentTier || 'Medium') as 'High' | 'Medium' | 'Low';
-        intentDistribution[intent]++;
-
-        // Objection Aggregation (Standardized)
-        if (call.evaluation?.analysis?.objections) {
-          call.evaluation.analysis.objections.forEach(obj => {
-            objectionCounts[obj] = (objectionCounts[obj] || 0) + 1;
-          });
-        }
-
-        const moduleName = call.module?.name || 'Unknown Module';
-        if (!moduleWiseResults[moduleName]) {
-          moduleWiseResults[moduleName] = { yes: 0, no: 0, maybe: 0, total: 0 };
-        }
-
-        resultDistribution.total++;
-        resultDistribution[key]++;
-        
-        moduleWiseResults[moduleName].total++;
-        moduleWiseResults[moduleName][key]++;
-      });
-      
-      // Calculate bulk call statistics
-      const bulkCalls = filteredCalls.filter((call: CallData) => call.callType === 'bulk' && call.batchId);
-      const batchGroups: { [key: string]: CallData[] } = {};
-      
-      bulkCalls.forEach((call: CallData) => {
-        if (call.batchId) {
-          if (!batchGroups[call.batchId]) {
-            batchGroups[call.batchId] = [];
-          }
-          batchGroups[call.batchId].push(call);
-        }
-      });
-      
-      // Objection stats already calculated in main loop
-      
-      const objectionStats = Object.entries(objectionCounts)
-        .map(([subject, count]) => ({ subject, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 6);
-
-      const bulkCallStats = Object.entries(batchGroups).map(([batchId, calls]) => {
-        const completedInBatch = calls.filter(c => c.status === 'completed' && c.evaluation?.result);
-        const yesInBatch = completedInBatch.filter(c => c.evaluation?.result === 'YES').length;
-        const noInBatch = completedInBatch.filter(c => c.evaluation?.result === 'NO').length;
-        const maybeInBatch = completedInBatch.filter(c => c.evaluation?.result === 'MAYBE').length;
-        
-        return {
-          batchId,
-          moduleName: calls[0]?.moduleName || 'Unknown',
-          totalCalls: calls.length,
-          yesCount: yesInBatch,
-          noCount: noInBatch,
-          maybeCount: maybeInBatch,
-          conversionRate: completedInBatch.length > 0 ? (yesInBatch / completedInBatch.length) * 100 : 0,
-          date: calls[0]?.createdAt || ''
-        };
-      }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      setAnalyticsData({
-        totalCalls,
-        completedCalls,
-        failedCalls,
-        averageDuration,
-        successRate,
-        callsThisWeek,
-        callsThisMonth,
-        topModules,
-        recentCalls,
-        statusDistribution,
-        dailyCalls,
-        resultDistribution,
-        intentDistribution,
-        bulkCallStats,
-        moduleWiseResults,
-        objectionStats: objectionStats.length > 0 ? objectionStats : [
-          { subject: 'Price', count: 0 },
-          { subject: 'Timing', count: 0 },
-          { subject: 'Trust', count: 0 },
-          { subject: 'Need', count: 0 },
-          { subject: 'Authority', count: 0 },
-          { subject: 'Competition', count: 0 },
-        ]
-      });
-      
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-      setError("Failed to load analytics data");
-    } finally {
-      setLoading(false);
+      filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= monthAgo);
+    } else if (timeRange === 'year') {
+      const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      filteredCalls = calls.filter((call: CallData) => new Date(call.createdAt) >= yearAgo);
     }
-  };
+    
+    const totalCalls = filteredCalls.length;
+    const completedCalls = filteredCalls.filter((call: CallData) => call.status === 'completed').length;
+    const failedCalls = filteredCalls.filter((call: CallData) => ['failed', 'busy', 'no-answer', 'canceled'].includes(call.status)).length;
+    
+    const totalDuration = filteredCalls.reduce((sum: number, call: CallData) => sum + (call.duration || 0), 0);
+    const averageDuration = totalCalls > 0 ? totalDuration / totalCalls : 0;
+    
+    const successRate = totalCalls > 0 ? (completedCalls / totalCalls) * 100 : 0;
+    
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    const callsThisWeek = calls.filter((call: CallData) => 
+      new Date(call.createdAt) >= weekAgo
+    ).length;
+    
+    const callsThisMonth = calls.filter((call: CallData) => 
+      new Date(call.createdAt) >= monthAgo
+    ).length;
+    
+    const moduleStats: { [key: string]: number } = {};
+    filteredCalls.forEach((call: CallData) => {
+      const moduleName = call.moduleName || 'Unknown Module';
+      moduleStats[moduleName] = (moduleStats[moduleName] || 0) + 1;
+    });
+    
+    const topModules = Object.entries(moduleStats)
+      .map(([name, calls]) => ({ name, calls }))
+      .sort((a, b) => b.calls - a.calls)
+      .slice(0, 5);
+    
+    const statusCounts: { [key: string]: number } = {};
+    filteredCalls.forEach((call: CallData) => {
+      statusCounts[call.status] = (statusCounts[call.status] || 0) + 1;
+    });
+    
+    const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
+      status,
+      count,
+      percentage: totalCalls > 0 ? (count / totalCalls) * 100 : 0
+    }));
+    
+    const dailyCalls = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayCalls = filteredCalls.filter((call: CallData) => 
+        call.createdAt.startsWith(dateStr)
+      ).length;
+      dailyCalls.push({ date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), count: dayCalls });
+    }
+    
+    const recentCalls = [...filteredCalls]
+      .sort((a: CallData, b: CallData) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+
+    const getResultKey = (result: string = ''): 'yes' | 'no' | 'maybe' | null => {
+      const r = result.toUpperCase();
+      if (['YES', 'BOOKED', 'PURCHASED', 'QUALIFIED'].includes(r)) return 'yes';
+      if (['NO', 'GENERAL_INQUIRY', 'FEEDBACK_RECEIVED', 'UNQUALIFIED', 'DECLINED'].includes(r)) return 'no';
+      if (['MAYBE', 'INTERESTED', 'URGENT', 'ABANDONED_CART', 'NURTURE', 'INVESTIGATION_REQUIRED'].includes(r)) return 'maybe';
+      return null;
+    };
+
+    const completedCallsWithResults = filteredCalls.filter((call: CallData) => 
+      call.evaluation?.result
+    );
+    
+    const resultDistribution = { yes: 0, no: 0, maybe: 0, total: 0 };
+    const intentDistribution = { High: 0, Medium: 0, Low: 0 };
+    const moduleWiseResults: { [key: string]: { yes: number; no: number; maybe: number; total: number } } = {};
+    const objectionCounts: { [key: string]: number } = {};
+
+    completedCallsWithResults.forEach((call: CallData) => {
+      const key = getResultKey(call.evaluation?.result);
+      if (!key) return;
+
+      const intent = (call.evaluation?.analysis?.intentTier || 'Medium') as 'High' | 'Medium' | 'Low';
+      intentDistribution[intent]++;
+
+      if (call.evaluation?.analysis?.objections) {
+        call.evaluation.analysis.objections.forEach((obj: string) => {
+          objectionCounts[obj] = (objectionCounts[obj] || 0) + 1;
+        });
+      }
+
+      const moduleName = call.module?.name || 'Unknown Module';
+      if (!moduleWiseResults[moduleName]) {
+        moduleWiseResults[moduleName] = { yes: 0, no: 0, maybe: 0, total: 0 };
+      }
+
+      resultDistribution.total++;
+      resultDistribution[key]++;
+      
+      moduleWiseResults[moduleName].total++;
+      moduleWiseResults[moduleName][key]++;
+    });
+    
+    const bulkCalls = filteredCalls.filter((call: CallData) => call.callType === 'bulk' && call.batchId);
+    const batchGroups: { [key: string]: CallData[] } = {};
+    
+    bulkCalls.forEach((call: CallData) => {
+      if (call.batchId) {
+        if (!batchGroups[call.batchId]) {
+          batchGroups[call.batchId] = [];
+        }
+        batchGroups[call.batchId].push(call);
+      }
+    });
+    
+    const objectionStats = Object.entries(objectionCounts)
+      .map(([subject, count]) => ({ subject, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    const bulkCallStats = Object.entries(batchGroups).map(([batchId, calls]) => {
+      const completedInBatch = calls.filter(c => c.status === 'completed' && c.evaluation?.result);
+      const yesInBatch = completedInBatch.filter(c => c.evaluation?.result === 'YES').length;
+      const noInBatch = completedInBatch.filter(c => c.evaluation?.result === 'NO').length;
+      const maybeInBatch = completedInBatch.filter(c => c.evaluation?.result === 'MAYBE').length;
+      
+      return {
+        batchId,
+        moduleName: calls[0]?.moduleName || 'Unknown',
+        totalCalls: calls.length,
+        yesCount: yesInBatch,
+        noCount: noInBatch,
+        maybeCount: maybeInBatch,
+        conversionRate: completedInBatch.length > 0 ? (yesInBatch / completedInBatch.length) * 100 : 0,
+        date: calls[0]?.createdAt || ''
+      };
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return {
+      totalCalls,
+      completedCalls,
+      failedCalls,
+      averageDuration,
+      successRate,
+      callsThisWeek,
+      callsThisMonth,
+      topModules,
+      recentCalls,
+      statusDistribution,
+      dailyCalls,
+      resultDistribution,
+      intentDistribution,
+      bulkCallStats,
+      moduleWiseResults,
+      objectionStats: objectionStats.length > 0 ? objectionStats : [
+        { subject: 'Price', count: 0 },
+        { subject: 'Timing', count: 0 },
+        { subject: 'Trust', count: 0 },
+        { subject: 'Need', count: 0 },
+        { subject: 'Authority', count: 0 },
+        { subject: 'Competition', count: 0 },
+      ]
+    };
+  }, [queryData, isDemoMode, timeRange]);
 
   const toggleDemoMode = () => {
-    if (!isDemoMode) {
-      setAnalyticsData(DEMO_DATA);
-      setIsDemoMode(true);
-    } else {
-      setIsDemoMode(false);
-      fetchAnalyticsData();
-    }
+    setIsDemoMode(!isDemoMode);
   };
-
-  useEffect(() => {
-    if (!isDemoMode) {
-      fetchAnalyticsData();
-    }
-  }, [user, timeRange, isDemoMode]);
 
 
 
@@ -540,26 +499,67 @@ const AnalyticsPage: React.FC = () => {
     });
   };
 
-  if (loading) {
+  if (isLoading && !isDemoMode) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 px-2 sm:px-4 py-8 sm:py-10 pt-24">
-        <div className="w-full max-w-6xl mx-auto">
-          <div className="flex items-center justify-center">
-            <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
-            <span className="ml-3 text-white text-lg">Loading analytics...</span>
+      <div className="min-h-screen relative overflow-hidden bg-[#0a0a0a] pt-24 pb-12 px-4 sm:px-6">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/10 via-[#0a0a0a] to-[#0a0a0a] pointer-events-none"></div>
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+        
+        <div className="w-full max-w-7xl mx-auto relative z-10 space-y-8">
+          
+          {/* Header Skeleton */}
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 border-b border-white/[0.06] pb-8">
+            <div className="space-y-4">
+              <Skeleton className="w-24 h-6 rounded-full bg-white/[0.04]" />
+              <Skeleton className="w-48 h-10 rounded-lg bg-white/[0.04]" />
+              <Skeleton className="w-72 h-4 rounded-md bg-white/[0.04]" />
+            </div>
+            <Skeleton className="w-64 h-10 rounded-xl bg-white/[0.04]" />
+          </div>
+
+          {/* Stat Cards Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 relative overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-3">
+                    <Skeleton className="w-20 h-4 rounded-md bg-white/[0.04]" />
+                    <Skeleton className="w-32 h-8 rounded-lg bg-white/[0.04]" />
+                  </div>
+                  <Skeleton className="w-10 h-10 rounded-xl bg-white/[0.04]" />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Charts Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 relative h-[400px] flex flex-col">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+              <Skeleton className="w-48 h-6 rounded-md bg-white/[0.04] mb-8" />
+              <Skeleton className="w-full flex-1 rounded-xl bg-white/[0.02] border border-white/[0.03]" />
+            </div>
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 relative h-[400px] flex flex-col">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+              <Skeleton className="w-40 h-6 rounded-md bg-white/[0.04] mb-8" />
+              <div className="flex-1 flex items-center justify-center">
+                <Skeleton className="w-48 h-48 rounded-full bg-white/[0.02] border border-white/[0.03]" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !isDemoMode) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 px-2 sm:px-4 py-8 sm:py-10 pt-24">
         <div className="w-full max-w-6xl mx-auto">
           <div className="text-center">
-            <div className="text-red-400 mb-4">{error}</div>
-            <Button onClick={fetchAnalyticsData} className="bg-blue-600 hover:bg-blue-700">
+            <div className="text-red-400 mb-4">{error.message || "Failed to load analytics data"}</div>
+            <Button onClick={() => refetch()} className="bg-blue-600 hover:bg-blue-700">
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry
             </Button>
@@ -575,7 +575,7 @@ const AnalyticsPage: React.FC = () => {
         <div className="w-full max-w-6xl mx-auto">
           <div className="text-center">
             <div className="text-zinc-400 mb-4">No analytics data available</div>
-            <Button onClick={fetchAnalyticsData} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => refetch()} className="bg-blue-600 hover:bg-blue-700">
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
@@ -596,137 +596,99 @@ const AnalyticsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-[#050505] px-4 sm:px-6 pt-24 pb-12">
-      {/* Rich Background Elements */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+    <div className="min-h-screen relative overflow-hidden bg-zinc-950 px-4 sm:px-6 pt-24 pb-12">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
       
       <div className="w-full max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-6 sm:mb-8 md:mb-10 text-left">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.05] bg-white/[0.02] mb-3">
-            <PieChartIcon className="w-3 h-3 text-blue-400" />
-            <span className="text-[9px] font-bold tracking-widest text-zinc-300 uppercase">Insights</span>
+        <div className="mb-6 sm:mb-8 text-left flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white tracking-tight mb-1">Analytics<span className="text-zinc-500">.</span></h1>
+            <p className="text-zinc-400 text-xs">Track your call performance and insights.</p>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Analytics<span className="text-zinc-500">.</span></h1>
-              <p className="text-zinc-400 text-xs leading-relaxed">
-                Track your call performance and insights.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 mt-4 sm:mt-0">
-              <Button 
-                variant={isDemoMode ? "default" : "outline"}
-                size="sm"
-                onClick={toggleDemoMode}
-                className={`text-xs sm:text-sm px-3 py-2 ${isDemoMode ? "bg-amber-500 hover:bg-amber-600 text-black border-none" : ""}`}
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center bg-zinc-900 border border-white/[0.05] rounded-lg overflow-hidden group hover:border-white/10 transition-colors">
+              <div className="pl-3 pr-2 flex items-center justify-center pointer-events-none">
+                <Calendar className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+              </div>
+              <select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value as 'week' | 'month' | 'year')}
+                className="bg-transparent text-sm text-white font-medium pl-1 pr-8 py-2 outline-none appearance-none cursor-pointer w-36"
               >
-                <Target className="w-4 h-4 mr-2" />
-                {isDemoMode ? "Exit Demo" : "Demo Data"}
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => {
-                  setIsDemoMode(false);
-                  fetchAnalyticsData();
-                }}
-                className="text-xs sm:text-sm px-3 py-2"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
+                <option value="week" className="bg-zinc-900">Last 7 Days</option>
+                <option value="month" className="bg-zinc-900">Last 30 Days</option>
+                <option value="year" className="bg-zinc-900">This Year</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 1L5 5L9 1" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
             </div>
+            
+            <button 
+              onClick={toggleDemoMode}
+              className={`text-xs px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all ${isDemoMode ? "bg-amber-500 hover:bg-amber-600 text-black" : "bg-zinc-900 border border-white/[0.05] text-zinc-300 hover:bg-zinc-800 hover:text-white"}`}
+            >
+              <Target className="w-4 h-4" />
+              {isDemoMode ? "Exit Demo" : "Demo"}
+            </button>
+            <button 
+              onClick={() => {
+                setIsDemoMode(false);
+                refetch();
+              }}
+              className="text-xs px-4 py-2 rounded-lg flex items-center gap-2 font-medium bg-zinc-900 border border-white/[0.05] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
           </div>
+        </div>
           
-          {/* Time Range Selector with Data Summary */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              {(['week', 'month', 'year'] as const).map((range) => (
-                <Button
-                  key={range}
-                  variant={timeRange === range ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setTimeRange(range)}
-                  className={`text-xs sm:text-sm capitalize px-3 py-2 ${
-                    timeRange === range 
-                      ? "bg-white text-black hover:bg-gray-100" 
-                      : "bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700"
-                  }`}
-                >
-                  {range}
-                </Button>
-              ))}
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-zinc-400">
-                Showing {analyticsData?.totalCalls || 0} calls from the last {timeRange}
-              </p>
-              <p className="text-xs text-zinc-500">
-                Last updated: {new Date().toLocaleTimeString()}
-              </p>
-            </div>
+
+
+        {/* Tabs */}
+        <div className="flex items-center gap-1 p-1 bg-zinc-900/50 border border-white/[0.05] rounded-lg w-fit mb-8 overflow-x-auto max-w-full">
+          {[
+            { id: 'dashboard', label: 'Overview' },
+            { id: 'evaluations', label: 'Evaluations' },
+            { id: 'bulk', label: 'Bulk Campaigns' },
+            { id: 'calls', label: 'Call Logs' },
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)} 
+              className={`px-4 py-2 rounded-md text-[13px] font-medium transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            {/* Key Metrics */}
+            <StatCards 
+              analyticsData={analyticsData} 
+              timeRange={timeRange} 
+              formatDuration={formatDuration} 
+            />
+            <Charts 
+              analyticsData={analyticsData} 
+              selectedModuleFilter={selectedModuleFilter} 
+              inferModuleCategory={inferModuleCategory}
+              view="overview"
+            />
           </div>
-        </div>
+        )}
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-zinc-400 text-xs">Total Calls</p>
-                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.totalCalls}</p>
-                <p className="text-[10px] text-zinc-500 mt-1">Last {timeRange}</p>
-              </div>
-              <div className="bg-blue-500/20 p-2 sm:p-2.5 rounded-xl">
-                <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-zinc-400 text-xs">Success Rate</p>
-                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.successRate.toFixed(1)}%</p>
-                <p className="text-[10px] text-zinc-500 mt-1">{analyticsData?.completedCalls} completed</p>
-              </div>
-              <div className="bg-green-500/20 p-2 sm:p-2.5 rounded-xl">
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-zinc-400 text-xs">Avg Duration</p>
-                <p className="text-xl sm:text-2xl font-bold text-white">{formatDuration(Math.round(analyticsData?.averageDuration || 0))}</p>
-                <p className="text-[10px] text-zinc-500 mt-1">per call</p>
-              </div>
-              <div className="bg-yellow-500/20 p-2 sm:p-2.5 rounded-xl">
-                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-[#09090b] border border-white/[0.08] p-4 sm:p-5 rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-zinc-400 text-xs">Failed Calls</p>
-                <p className="text-xl sm:text-2xl font-bold text-white">{analyticsData?.failedCalls}</p>
-                <p className="text-[10px] text-zinc-500 mt-1">{analyticsData?.failedCalls > 0 ? `${((analyticsData.failedCalls / analyticsData.totalCalls) * 100).toFixed(1)}%` : '0%'} rate</p>
-              </div>
-              <div className="bg-red-500/20 p-2 sm:p-2.5 rounded-xl">
-                <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* AI Result Distribution */}
-        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-6 sm:mb-8 rounded-2xl shadow-xl">
+        {activeTab === 'evaluations' && (
+          <div className="space-y-6">
+            {/* AI Result Distribution */}
+            <Card className="bg-zinc-900 border border-white/[0.05] shadow-md p-5 sm:p-6 mb-6 sm:mb-8 rounded-lg">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">AI Evaluation Results</h3>
@@ -746,7 +708,7 @@ const AnalyticsPage: React.FC = () => {
               </select>
               <Badge variant="outline" className="text-xs text-white">
                 {selectedModuleFilter === 'all' 
-                  ? `${analyticsData?.resultDistribution.total || 0} Total`
+                  ? `${analyticsData?.resultDistribution?.total || 0} Total`
                   : `${analyticsData?.moduleWiseResults?.[selectedModuleFilter]?.total || 0} Calls`
                 }
               </Badge>
@@ -771,14 +733,14 @@ const AnalyticsPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                   {/* Yes Count */}
                   <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-green-400 font-medium uppercase tracking-wider">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-green-400 font-bold uppercase tracking-wider">
                         {getCategoryLabels(user?.currentWorkspace?.category).yes}
                       </span>
-                      <CheckCircle className="w-5 h-5 text-green-400" />
+                      <CheckCircle className="w-4 h-4 text-green-400" />
                     </div>
-                    <p className="text-2xl font-bold text-white">{displayData.yes || 0}</p>
-                    <p className="text-xs text-zinc-400 mt-1">
+                    <p className="text-xl font-bold text-white">{displayData.yes || 0}</p>
+                    <p className="text-[10px] text-zinc-400">
                       {displayData.total > 0 
                         ? `${((displayData.yes / displayData.total) * 100).toFixed(1)}%`
                         : '0%'} rate
@@ -786,15 +748,15 @@ const AnalyticsPage: React.FC = () => {
                   </div>
 
                   {/* No Count */}
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-red-400 font-medium uppercase tracking-wider">
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-md p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider">
                         {getCategoryLabels(user?.currentWorkspace?.category).no}
                       </span>
-                      <XCircle className="w-5 h-5 text-red-400" />
+                      <XCircle className="w-4 h-4 text-red-400" />
                     </div>
-                    <p className="text-2xl font-bold text-white">{displayData.no || 0}</p>
-                    <p className="text-xs text-zinc-400 mt-1">
+                    <p className="text-xl font-bold text-white">{displayData.no || 0}</p>
+                    <p className="text-[10px] text-zinc-400">
                       {displayData.total > 0 
                         ? `${((displayData.no / displayData.total) * 100).toFixed(1)}%`
                         : '0%'} rate
@@ -802,15 +764,15 @@ const AnalyticsPage: React.FC = () => {
                   </div>
 
                   {/* Maybe Count */}
-                  <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-yellow-400 font-medium uppercase tracking-wider">
+                  <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-yellow-400 font-bold uppercase tracking-wider">
                         {getCategoryLabels(user?.currentWorkspace?.category).maybe}
                       </span>
-                      <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                      <AlertTriangle className="w-4 h-4 text-yellow-400" />
                     </div>
-                    <p className="text-2xl font-bold text-white">{displayData.maybe || 0}</p>
-                    <p className="text-xs text-zinc-400 mt-1">
+                    <p className="text-xl font-bold text-white">{displayData.maybe || 0}</p>
+                    <p className="text-[10px] text-zinc-400">
                       {displayData.total > 0 
                         ? `${((displayData.maybe / displayData.total) * 100).toFixed(1)}%`
                         : '0%'} rate
@@ -819,7 +781,7 @@ const AnalyticsPage: React.FC = () => {
                 </div>
 
                 {/* Visual Bar */}
-                <div className="w-full h-4 bg-zinc-800 rounded-full overflow-hidden flex">
+                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden flex">
                   <div 
                     className="bg-green-500 h-full transition-all duration-500"
                     style={{ 
@@ -849,241 +811,24 @@ const AnalyticsPage: React.FC = () => {
             );
           })()}
         </Card>
-
-        {/* Bulk Call Statistics */}
-        {analyticsData?.bulkCallStats && analyticsData.bulkCallStats.length > 0 && (
-        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-6 sm:mb-8 rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <div>
-                <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white">Bulk Call Campaigns</h3>
-                <p className="text-xs text-zinc-400 mt-1">Performance metrics for batch calling</p>
-              </div>
-              <Badge variant="outline" className="text-xs text-white">
-                {analyticsData.bulkCallStats.length} Campaigns
-              </Badge>
-            </div>
-
-            <div className="space-y-4">
-              {analyticsData.bulkCallStats.map((batch) => (
-                <div key={batch.batchId} className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-semibold text-white">{batch.moduleName}</h4>
-                        <Badge className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
-                          Bulk
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-zinc-400">
-                        {formatDate(batch.date)}  {batch.totalCalls} contacts
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-green-400">{batch.conversionRate.toFixed(1)}%</p>
-                      <p className="text-xs text-zinc-500">conversion</p>
-                    </div>
-                  </div>
-
-                  {/* Results Breakdown */}
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="text-center">
-                      <p className="text-xl font-bold text-green-400">{batch.yesCount}</p>
-                      <p className="text-xs text-zinc-400">Yes</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xl font-bold text-red-400">{batch.noCount}</p>
-                      <p className="text-xs text-zinc-400">No</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xl font-bold text-yellow-400">{batch.maybeCount}</p>
-                      <p className="text-xs text-zinc-400">Maybe</p>
-                    </div>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden flex">
-                    <div 
-                      className="bg-green-500 h-full"
-                      style={{ 
-                        width: batch.totalCalls > 0 ? `${(batch.yesCount / batch.totalCalls) * 100}%` : '0%' 
-                      }}
-                    ></div>
-                    <div 
-                      className="bg-red-500 h-full"
-                      style={{ 
-                        width: batch.totalCalls > 0 ? `${(batch.noCount / batch.totalCalls) * 100}%` : '0%' 
-                      }}
-                    ></div>
-                    <div 
-                      className="bg-yellow-500 h-full"
-                      style={{ 
-                        width: batch.totalCalls > 0 ? `${(batch.maybeCount / batch.totalCalls) * 100}%` : '0%' 
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+        
+        <Charts 
+          analyticsData={analyticsData} 
+          selectedModuleFilter={selectedModuleFilter} 
+          inferModuleCategory={inferModuleCategory}
+          view="evaluations"
+        />
+          </div>
         )}
 
-        {/* Visual Analysis Section */}
-        <div className="mb-6 sm:mb-8 md:mb-10">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-4">Visual Insights</h2>
-          <p className="text-zinc-400 text-sm sm:text-base mb-6">Deep dive into call patterns and lead quality.</p>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Objection Radar Chart */}
-            <Card className="bg-zinc-900 border-zinc-800 p-6 rounded-[2rem] shadow-xl">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-500/10 rounded-xl">
-                    <Target className="w-5 h-5 text-rose-400" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">Objection Radar</h3>
-                </div>
-                <span className="text-xs text-zinc-500 font-medium uppercase tracking-widest">Friction Analysis</span>
-              </div>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={analyticsData?.objectionStats || []}>
-                    <PolarGrid stroke="#3f3f46" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#71717a', fontSize: 10 }} />
-                    <Radar
-                      name="Objections"
-                      dataKey="count"
-                      stroke="#ef4444"
-                      fill="#ef4444"
-                      fillOpacity={0.3}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                      itemStyle={{ color: '#fff' }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            {/* Lead Quality Distribution */}
-            <Card className="bg-zinc-900 border-zinc-800 p-6 rounded-[2rem] shadow-xl">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-500/10 rounded-xl">
-                    <PieChartIcon className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">Lead Intent Tiers</h3>
-                </div>
-                <span className="text-xs text-zinc-500 font-medium uppercase tracking-widest">Psychological Mapping</span>
-              </div>
-              <div className="h-[300px] w-full flex items-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'High', value: analyticsData?.intentDistribution?.High || 0 },
-                        { name: 'Medium', value: analyticsData?.intentDistribution?.Medium || 0 },
-                        { name: 'Low', value: analyticsData?.intentDistribution?.Low || 0 },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      <Cell fill="#10b981" />
-                      <Cell fill="#f59e0b" />
-                      <Cell fill="#ef4444" />
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                      itemStyle={{ color: '#fff' }}
-                    />
-                    <Legend iconType="circle" />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
+        {activeTab === 'bulk' && (
+          <div className="space-y-6">
+            <BulkCallStats 
+              bulkCallStats={analyticsData?.bulkCallStats} 
+              formatDate={formatDate} 
+            />
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Dynamic Funnel/Matrix based on category */}
-            {(selectedModuleFilter === 'all' || inferModuleCategory(selectedModuleFilter) === 'E-commerce') && (
-              <Card className="bg-zinc-900 border-zinc-800 p-6 rounded-[2rem] shadow-xl">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-500/10 rounded-xl">
-                      <TrendingUp className="w-5 h-5 text-blue-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white">Conversion Funnel</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="w-4 h-4 text-zinc-500" />
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">E-commerce View</span>
-                  </div>
-                </div>
-                <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={[
-                        { name: 'Total', count: analyticsData?.totalCalls || 0 },
-                        { name: 'Answered', count: analyticsData?.completedCalls || 0 },
-                        { name: 'Converted', count: analyticsData?.resultDistribution.yes || 0 },
-                      ]}
-                      margin={{ top: 20, right: 30, left: 40, bottom: 5 }}
-                    >
-                      <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#71717a' }} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                        cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                      />
-                      <Bar dataKey="count" fill="#3b82f6" radius={[0, 10, 10, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            )}
-
-            {(selectedModuleFilter === 'all' || ['Medical', 'Real Estate'].includes(inferModuleCategory(selectedModuleFilter))) && (
-              <Card className="bg-zinc-900 border-zinc-800 p-6 rounded-[2rem] shadow-xl">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-xl">
-                      <Calendar className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white">Recovery Matrix</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Stethoscope className="w-4 h-4 text-zinc-500" />
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Appointment View</span>
-                  </div>
-                </div>
-                <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analyticsData?.dailyCalls || []}>
-                      <defs>
-                        <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
-                      />
-                      <Area type="monotone" dataKey="count" stroke="#10b981" fillOpacity={1} fill="url(#colorCount)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Live Call Modal */}
         {liveCallModal && (
@@ -1095,129 +840,21 @@ const AnalyticsPage: React.FC = () => {
           />
         )}
 
-        {/* Recent Calls Table */}
-        <Card className="bg-[#09090b] border border-white/[0.08] p-5 sm:p-6 mb-10 overflow-hidden rounded-2xl shadow-xl">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-bold text-white tracking-tight">Recent Calls</h3>
+        {activeTab === 'calls' && (
+          <div className="space-y-6">
+            <RecentCallsList
+              recentCalls={analyticsData?.recentCalls}
+              user={user}
+              formatDuration={formatDuration}
+              getSentimentColor={getSentimentColor}
+              getIntentColor={getIntentColor}
+              expandedCallId={expandedCallId}
+              setExpandedCallId={setExpandedCallId}
+              setIntelModal={setIntelModal}
+              setLiveCallModal={setLiveCallModal}
+            />
           </div>
-          
-          <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <div className="min-w-full inline-block align-middle">
-              <div className="overflow-hidden">
-                {analyticsData?.recentCalls && analyticsData.recentCalls.length > 0 ? (
-                  <table className="min-w-full divide-y divide-white/5">
-                    <thead>
-                      <tr>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Customer</th>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Module</th>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Status</th>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Duration</th>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Intel</th>
-                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.02]">
-                      {analyticsData.recentCalls.map((call) => (
-                        <React.Fragment key={call._id}>
-                          <tr className="hover:bg-white/[0.02] transition-all duration-300">
-                            <td className="py-5 px-4">
-                              <div>
-                                <span className="text-sm text-white block font-semibold mb-0.5 whitespace-nowrap">{call.customerName}</span>
-                                <span className="text-[10px] text-zinc-500 font-medium">{call.phoneNumber}</span>
-                              </div>
-                            </td>
-                            <td className="py-5 px-4">
-                              <span className="text-xs text-zinc-400 font-medium truncate block max-w-[100px]">{call.moduleName || 'Unknown'}</span>
-                            </td>
-                            <td className="py-5 px-4">
-                              {(() => {
-                                const getStatusDisplay = (status: string) => {
-                                  switch (status) {
-                                    case 'completed': return { text: 'Successful', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
-                                    case 'failed': return { text: 'Failed', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' };
-                                    case 'in-progress': return { text: 'In Progress', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' };
-                                    default: return { text: status.charAt(0).toUpperCase() + status.slice(1), color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' };
-                                  }
-                                };
-                                const statusDisplay = getStatusDisplay(call.status);
-                                return (
-                                  <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${statusDisplay.color}`}>
-                                    {statusDisplay.text}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                            <td className="py-5 px-4">
-                              <span className="text-xs text-zinc-300 font-mono font-bold tracking-tight">{formatDuration(call.duration)}</span>
-                            </td>
-                            <td className="py-5 px-4">
-                              <div className="flex items-center gap-3">
-                                <Badge variant="outline" className={`text-[10px] px-2 py-0.5 border ${getSentimentColor(call.evaluation?.analysis?.sentiment || 'Neutral')}`}>
-                                  {call.evaluation?.analysis?.sentiment || 'Neutral'}
-                                </Badge>
-                                {call.evaluation?.analysis?.intentTier && (
-                                  <span className={`text-[9px] font-black uppercase tracking-[0.1em] ${getIntentColor(call.evaluation.analysis.intentTier)}`}>
-                                    {call.evaluation.analysis.intentTier} Intent
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-5 px-4">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => setExpandedCallId(expandedCallId === call._id ? null : call._id)}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all duration-300 border ${
-                                    expandedCallId === call._id 
-                                      ? 'bg-emerald-500 text-white border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
-                                      : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300'
-                                  }`}
-                                >
-                                  {expandedCallId === call._id ? 'Close' : 'Journey'}
-                                </button>
-                                <button
-                                  onClick={() => setIntelModal(call)}
-                                  className="px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-zinc-900 text-zinc-500 border border-zinc-800 hover:border-zinc-700 hover:text-zinc-300 transition-all font-bold"
-                                >
-                                  Intel
-                                </button>
-                                <button
-                                  onClick={() => setLiveCallModal({
-                                    callId: call._id,
-                                    customerName: call.customerName,
-                                    phoneNumber: call.phoneNumber
-                                  })}
-                                  className="px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-zinc-900 text-blue-400/80 border border-zinc-800 hover:border-blue-500/30 hover:text-blue-400 transition-all flex items-center gap-1.5"
-                                >
-                                  <Eye className="w-3 h-3" />
-                                  <span>{call.status === 'in-progress' ? 'Live' : 'Transcript'}</span>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                          {expandedCallId === call._id && (
-                            <tr className="bg-white/[0.01]">
-                              <td colSpan={6} className="px-10 py-2 border-t border-white/[0.03]">
-                                <LeadTimeline 
-                                  phoneNumber={call.phoneNumber} 
-                                  workspaceId={(call as any).workspaceId || user?.currentWorkspace?._id || ''} 
-                                />
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="text-center py-20 bg-white/[0.01] rounded-2xl border border-white/5">
-                    <Activity className="w-8 h-8 text-zinc-800 mx-auto mb-4" />
-                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">No recent interactions discovered</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </Card>
+        )}
       </div>
 
       {/* Lead Intel Modal */}

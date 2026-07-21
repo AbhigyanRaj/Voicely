@@ -21,7 +21,6 @@ export const getMockUser = (userId = 'mock-user-id') => ({
   _id: userId,
   name: 'Test User',
   email: 'test@example.com',
-  tokens: 100,
   subscription: 'free',
   totalCallsMade: 0,
   isActive: true

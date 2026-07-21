@@ -8,11 +8,7 @@ import { getVoiceForLanguage } from '../config/translations.js';
 import { broadcastTranscriptUpdate } from '../websocket/liveCallServer.js';
 import logger from '../utils/logger.js';
 
-// Temporary local dev fix for "unable to verify the first certificate" error
-// thrown by Twilio's underlying Axios client on macOS.
-if (process.env.NODE_ENV === 'development') {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
+// Removed insecure TLS bypass. Use proper root CA in dev if needed.
 
 export const initiateCall = async (params) => {
     const { moduleId, phoneNumber, customerName, selectedVoice, selectedLanguage, ttsProvider, userId, priorContext } = params;

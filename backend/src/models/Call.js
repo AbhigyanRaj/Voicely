@@ -17,6 +17,10 @@ const callSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  moduleName: {
+    type: String,
+    default: 'Unknown Module',
+  },
   customerName: {
     type: String,
     required: true,
@@ -47,6 +51,12 @@ const callSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  liveTranscript: [{
+    speaker: String,
+    text: String,
+    timestamp: Date,
+    type: { type: String }
+  }],
   summary: {
     type: String,
     default: '',
@@ -105,7 +115,7 @@ const callSchema = new mongoose.Schema({
   },
   source: {
     type: String,
-    enum: ['web', 'telegram', 'automatic_scheduler'],
+    enum: ['web', 'automatic_scheduler'],
     default: 'web',
   },
   priorContext: {
@@ -115,6 +125,8 @@ const callSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+callSchema.index({ userId: 1, workspaceId: 1, createdAt: -1 });
 
 const Call = mongoose.model('Call', callSchema);
 

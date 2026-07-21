@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Workspace from '../models/Workspace.js';
+import Call from '../models/Call.js';
 import { generateToken } from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 
@@ -10,7 +11,6 @@ const buildUserResponse = (user) => ({
   _id: user._id,
   name: user.name,
   email: user.email,
-  tokens: user.tokens,
   subscription: user.subscription || { tier: 'free', status: 'active' },
   totalCallsMade: user.totalCallsMade,
   currentWorkspace: user.currentWorkspace,
@@ -162,7 +162,6 @@ export const googleAuth = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
-                tokens: user.tokens,
                 subscription: user.subscription || { tier: 'free', status: 'active' },
                 totalCallsMade: user.totalCallsMade,
                 currentWorkspace: user.currentWorkspace,
@@ -207,7 +206,6 @@ export const getProfile = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
-                tokens: user.tokens,
                 subscription: user.subscription || { tier: 'free', status: 'active' },
                 totalCallsMade: user.totalCallsMade,
                 currentWorkspace: user.currentWorkspace,
@@ -242,60 +240,11 @@ export const updateProfile = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
-                tokens: user.tokens,
                 subscription: user.subscription,
             }
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to update profile', message: error.message });
-    }
-};
-
-/**
- * Handle token purchases
- */
-export const buyTokens = async (req, res) => {
-    try {
-        const { amount } = req.body;
-        if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid token amount' });
-
-        const user = await User.findById(req.user._id);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-
-        user.totalCallsMade = (user.totalCallsMade || 0) + (amount * 10); // Mock logic
-        // user.addTokens(amount); - Assuming addTokens is a method on User model if we had it, but User.js shows basic fields
-        user.tokens = (user.tokens || 0) + amount;
-        await user.save();
-
-        res.json({ success: true, message: `${amount} tokens added successfully`, newBalance: user.tokens });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to purchase tokens', message: error.message });
-    }
-};
-
-/**
- * Generate Telegram linking code
- */
-export const generateTelegramCode = async (req, res) => {
-    try {
-        const user = await User.findById(req.user._id);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-
-        const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        let code = '';
-        for (let i = 0; i < 6; i++) {
-            code += characters.charAt(Math.floor(Math.random() * characters.length));
-        }
-
-        user.telegram = {
-            ...user.telegram,
-            linkingCode: { code, expiresAt: new Date(Date.now() + 10 * 60 * 1000) }
-        };
-
-        await user.save();
-        res.json({ success: true, code, expiresAt: user.telegram.linkingCode.expiresAt });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to generate linking code' });
     }
 };
 
@@ -307,18 +256,21 @@ export const getAnalytics = async (req, res) => {
         const user = await User.findById(req.user._id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        // Mock/Basic analytics for now to keep it clean, but preserving structure
+        const calls = await Call.find({ userId: user._id, source: { $ne: 'web' } });
+        const totalCalls = calls.length;
+        const successfulCalls = calls.filter(c => c.status === 'completed' || c.status === 'answered').length;
+        const successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
+
         res.json({
             success: true,
             analytics: {
                 user: {
-                    totalTokens: user.tokens,
-                    totalCallsMade: user.totalCallsMade,
+                    totalCallsMade: user.totalCallsMade || totalCalls,
                     subscription: user.subscription,
                 },
                 calls: {
-                    total: user.totalCallsMade,
-                    successRate: 100 // Placeholder
+                    total: totalCalls,
+                    successRate: successRate
                 }
             }
         });
@@ -335,11 +287,16 @@ export const getDashboard = async (req, res) => {
         const user = await User.findById(req.user._id);
         if (!user) return res.status(404).json({ error: 'User not found' });
 
+        const calls = await Call.find({ userId: user._id, source: { $ne: 'web' } });
+        const totalCalls = calls.length;
+        const successfulCalls = calls.filter(c => c.status === 'completed' || c.status === 'answered').length;
+        const successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
+
         res.json({
             success: true,
             dashboard: {
-                user: { name: user.name, email: user.email, tokens: user.tokens },
-                quickStats: { totalCalls: user.totalCallsMade, successRate: 100 }
+                user: { name: user.name, email: user.email },
+                quickStats: { totalCalls: totalCalls, successRate: successRate }
             }
         });
     } catch (error) {

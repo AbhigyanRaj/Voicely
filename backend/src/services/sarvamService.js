@@ -9,9 +9,9 @@ import logger from '../utils/logger.js';
  * Optimized for Indian regional languages and low-latency streaming.
  */
 class SarvamService extends EventEmitter {
-    constructor() {
+    constructor(apiKey = null) {
         super();
-        this.apiKey = process.env.SARVAM_API_KEY;
+        this.apiKey = apiKey || process.env.SARVAM_API_KEY;
         this.ttsUrl = 'https://api.sarvam.ai/text-to-speech';
         this.sttUrl = 'https://api.sarvam.ai/speech-to-text';
     }
@@ -126,7 +126,7 @@ class SarvamService extends EventEmitter {
  * Buffers text chunks and synthesizes audio using Sarvam AI
  */
 export class StreamingSarvamTTS extends EventEmitter {
-    constructor(languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false, optimizeFor = 'latency') {
+    constructor(languageCode = 'hi-IN', speaker = 'anushka', isWebCall = false, optimizeFor = 'latency', apiKey = null) {
         super();
         this.languageCode = languageCode;
         this.speaker = speaker;
@@ -135,7 +135,7 @@ export class StreamingSarvamTTS extends EventEmitter {
         this.textBuffer = '';
         this.isProcessing = false;
         this.audioQueue = [];
-        this.sarvam = new SarvamService();
+        this.sarvam = new SarvamService(apiKey);
     }
 
     processTextChunk(chunk) {

@@ -1,5 +1,6 @@
 import express from 'express';
 import { WebSocketServer } from 'ws';
+import jwt from 'jsonwebtoken';
 import DeepgramService from '../services/deepgramService.js';
 import Call from '../models/Call.js';
 import StreamingCallHandler from '../services/streamingCallHandler.js';
@@ -10,7 +11,6 @@ import StreamingCartesiaTTS from '../services/streamingCartesiaTTS.js';
 import { extractAnswersJSON, evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
 import { broadcastTranscriptUpdate } from '../websocket/liveCallServer.js';
 import * as callService from '../services/callService.js';
-import { sendIntelligentSummary } from '../services/botService.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
@@ -108,14 +108,6 @@ const handleCallCompletion = async (callSid, sessionData) => {
         logger.error(`Lead Sync failed for call ${callSid}:`, leadErr);
     }
 
-    // Push summary to Telegram only if call source is telegram
-    if (call.source === 'telegram') {
-        try {
-            await sendIntelligentSummary(call.userId, call);
-        } catch (botErr) {
-            logger.error(`Failed to push Telegram summary for call ${callSid}:`, botErr);
-        }
-    }
 
   } catch (err) {
     logger.error(`Error in handleCallCompletion for ${callSid}:`, err);
@@ -136,6 +128,22 @@ export function setupMediaStreamWebSocket(server = null) {
   });
 
   mediaStreamWss.on('connection', (ws, req) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    
+    // Authenticate browser sandbox requests (optional for demo agents)
+    if (url.pathname === '/api/streams/browser') {
+      const token = url.searchParams.get('token');
+      if (token && token !== 'null') {
+        try {
+          jwt.verify(token, process.env.JWT_SECRET);
+        } catch (err) {
+          logger.warn('Browser sandbox connection rejected: Invalid token');
+          ws.close(1008, 'Unauthorized: Invalid token');
+          return;
+        }
+      }
+    }
+
     logger.info(`New Twilio Media Stream connection initiated from ${req.socket.remoteAddress}`);
 
     let streamSid = null;
@@ -177,8 +185,31 @@ export function setupMediaStreamWebSocket(server = null) {
               }
 
               if (call) {
+                // Fetch BYOK API Keys for campaigns (not for sandbox)
+                let llmApiKey = null;
+                let sttApiKey = null;
+                let ttsApiKey = null;
+                const isBrowserSandbox = req.url.includes('/browser');
+
+                if (!call.demoAgentId && !isBrowserSandbox) {
+                    const ProviderCredential = (await import('../models/ProviderCredential.js')).default;
+                    const { decrypt } = await import('../utils/crypto.js');
+                    const userProviders = await ProviderCredential.find({ userId: call.userId });
+                    const getDecryptedKey = (pName) => {
+                        const p = userProviders.find(x => x.providerName === pName);
+                        if (p && p.credentials && p.credentials.authToken) {
+                            return decrypt(p.credentials.authToken);
+                        }
+                        return null;
+                    };
+                    llmApiKey = getDecryptedKey('gemini');
+                    sttApiKey = getDecryptedKey('deepgram');
+                    const callTtsProvider = call.ttsProvider || 'google';
+                    ttsApiKey = getDecryptedKey(callTtsProvider);
+                }
+
                 logger.success(`Call record found: ${call._id}. Initializing handlers...`);
-                const callHandler = new StreamingCallHandler(callSid, call.moduleId, call.phoneNumber, call.customerName);
+                const callHandler = new StreamingCallHandler(callSid, call.moduleId, call.phoneNumber, call.customerName, llmApiKey);
                 await callHandler.initialize();
                 
                 // CRITICAL: Inject prior context for scheduled follow-ups
@@ -191,17 +222,16 @@ export function setupMediaStreamWebSocket(server = null) {
 
                 // Initialize TTS based on explicit provider preference
                 const ttsProvider = call.ttsProvider || 'google';
-                const isBrowserSandbox = req.url.includes('/browser');
                 const optimizeFor = call.optimizeFor || 'latency';
                 const isHighFidelity = isBrowserSandbox && optimizeFor === 'quality';
                 
                 let tts;
                 if (ttsProvider === 'sarvam') {
-                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isHighFidelity, optimizeFor);
+                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isHighFidelity, optimizeFor, ttsApiKey);
                 } else if (ttsProvider === 'cartesia') {
-                    tts = new StreamingCartesiaTTS(call.selectedVoice || '79a125e8-cd45-4c13-8a67-188112f4dd22', isHighFidelity, optimizeFor);
+                    tts = new StreamingCartesiaTTS(call.selectedVoice || '79a125e8-cd45-4c13-8a67-188112f4dd22', isHighFidelity, optimizeFor, ttsApiKey);
                 } else if (ttsProvider === 'deepgram') {
-                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isHighFidelity);
+                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isHighFidelity, ttsApiKey);
                 } else {
                     tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA', isHighFidelity);
                 }
@@ -271,7 +301,7 @@ export function setupMediaStreamWebSocket(server = null) {
                   'pa-in': 'pa'
                 };
 
-                deepgramService = new DeepgramService();
+                deepgramService = new DeepgramService(sttApiKey);
                 const sttLanguage = STT_LANG_MAP[call.selectedLanguage?.toLowerCase()] || 'en-US';
                 
                 let sttModel = undefined;
@@ -303,43 +333,47 @@ export function setupMediaStreamWebSocket(server = null) {
 
                 // Handle Deepgram transcripts
                 deepgramService.on('partialTranscript', async (data) => {
-                  sessionData.partialTranscripts.push(data);
-                  sessionData.currentUtterance = data.text;
-                  sessionData.lastTranscriptTime = Date.now();
+                  try {
+                    sessionData.partialTranscripts.push(data);
+                    sessionData.currentUtterance = data.text;
+                    sessionData.lastTranscriptTime = Date.now();
 
-                  // Barge-in logic
-                  if (data.text.trim().length > 1) {
-                    if (sessionData.callHandler && sessionData.callHandler.isGreeting) {
-                      logger.debug(`Ignoring barge-in during initial greeting sequence: "${data.text.trim()}"`);
-                    } else {
-                      logger.info(`Barge-in detected: "${data.text.trim()}"`);
-                      if (ws.readyState === ws.OPEN) {
-                        ws.send(JSON.stringify({ event: 'clear', streamSid }));
-                      }
-                      if (sessionData.tts) {
-                        if (typeof sessionData.tts.clear === 'function') {
-                          sessionData.tts.clear();
-                        } else {
-                          sessionData.tts.audioQueue = []; 
-                          sessionData.tts.textBuffer = '';
+                    // Barge-in logic
+                    if (data.text.trim().length > 1) {
+                      if (sessionData.callHandler && sessionData.callHandler.isGreeting) {
+                        logger.debug(`Ignoring barge-in during initial greeting sequence: "${data.text.trim()}"`);
+                      } else {
+                        logger.info(`Barge-in detected: "${data.text.trim()}"`);
+                        if (ws.readyState === ws.OPEN) {
+                          ws.send(JSON.stringify({ event: 'clear', streamSid }));
+                        }
+                        if (sessionData.tts) {
+                          if (typeof sessionData.tts.clear === 'function') {
+                            sessionData.tts.clear();
+                          } else {
+                            sessionData.tts.audioQueue = []; 
+                            sessionData.tts.textBuffer = '';
+                          }
+                        }
+                        if (sessionData.callHandler) {
+                          sessionData.callHandler.state = 'IDLE';
+                        }
+                        
+                        // Clear debouncer state to avoid cross-talk processing
+                        sessionData.bufferedTranscript = [];
+                        if (sessionData.silenceTimeout) {
+                          clearTimeout(sessionData.silenceTimeout);
+                          sessionData.silenceTimeout = null;
                         }
                       }
-                      if (sessionData.callHandler) {
-                        sessionData.callHandler.state = 'IDLE';
-                      }
-                      
-                      // Clear debouncer state to avoid cross-talk processing
-                      sessionData.bufferedTranscript = [];
-                      if (sessionData.silenceTimeout) {
-                        clearTimeout(sessionData.silenceTimeout);
-                        sessionData.silenceTimeout = null;
-                      }
                     }
-                  }
 
-                  if (sessionData.callHandler) {
-                    await sessionData.callHandler.processPartialTranscript(data.text, data.confidence);
-                    broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: data.text, isFinal: false });
+                    if (sessionData.callHandler) {
+                      await sessionData.callHandler.processPartialTranscript(data.text, data.confidence);
+                      broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: data.text, isFinal: false });
+                    }
+                  } catch (err) {
+                    logger.error('Error handling partial transcript', err);
                   }
                 });
 
@@ -445,16 +479,20 @@ export function setupMediaStreamWebSocket(server = null) {
     });
 
     ws.on('close', async (code, reason) => {
-      logger.debug(`Twilio Media Stream connection closed: [Code: ${code}] [Reason: ${reason}]`);
+      try {
+        logger.debug(`Twilio Media Stream connection closed: [Code: ${code}] [Reason: ${reason}]`);
 
-      if (deepgramService) {
-        deepgramService.close();
-      }
+        if (deepgramService) {
+          deepgramService.close();
+        }
 
-      if (callSid) {
-        // Just in case 'stop' wasn't sent
-        await handleCallCompletion(callSid, sessionData);
-        activeSessions.delete(callSid);
+        if (callSid) {
+          // Just in case 'stop' wasn't sent
+          await handleCallCompletion(callSid, sessionData);
+          activeSessions.delete(callSid);
+        }
+      } catch (err) {
+        logger.error('Error handling media stream close', err);
       }
     });
 

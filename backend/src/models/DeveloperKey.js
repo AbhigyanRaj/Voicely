@@ -36,6 +36,8 @@ const developerKeySchema = new mongoose.Schema({
   }
 });
 
+developerKeySchema.index({ userId: 1 });
+
 const DeveloperKey = mongoose.model('DeveloperKey', developerKeySchema);
 
 export default DeveloperKey;

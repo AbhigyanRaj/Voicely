@@ -10,13 +10,13 @@ const providerCredentialSchema = new mongoose.Schema({
   providerName: {
     type: String,
     required: true,
-    enum: ['twilio'], // Extendable later
+    enum: ['twilio', 'deepgram', 'gemini', 'cartesia', 'sarvam', 'google'],
     default: 'twilio'
   },
   credentials: {
-    accountSid: { type: String, required: true },
-    authToken: { type: String, required: true }, // Will be encrypted
-    phoneNumber: { type: String, required: true }
+    accountSid: { type: String, required: false }, // required for Twilio
+    authToken: { type: String, required: true }, // Encrypted API key/Auth Token
+    phoneNumber: { type: String, required: false } // Only for Twilio
   },
   isDefault: {
     type: Boolean,

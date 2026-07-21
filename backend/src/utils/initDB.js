@@ -30,7 +30,9 @@ export const initializeDatabase = async () => {
     logger.debug('Audio directory permissions verified');
 
     // Clean up test file
-    fs.unlinkSync(testFile);
+    if (fs.existsSync(testFile)) {
+      fs.unlinkSync(testFile);
+    }
 
     // Create indexes for better performance
     await User.createIndexes();
@@ -68,7 +70,6 @@ export const createTestUser = async () => {
       const newUser = await User.create({
         email: 'test@vokai.com',
         name: 'Test User',
-        tokens: 1000,
         subscription: 'premium',
         totalCallsMade: 0,
         isActive: true
