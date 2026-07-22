@@ -87,6 +87,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [ttsProvider, setTtsProvider] = useState<string>("cartesia");
   const [optimizeFor, setOptimizeFor] = useState<'latency' | 'quality'>('latency');
   const [mobileStep, setMobileStep] = useState<1 | 2>(1);
+  const [timeLeft, setTimeLeft] = useState<number>(60);
 
   useEffect(() => {
     if (selectedModuleId) {
@@ -155,6 +156,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       setSelectedModuleId('demo-agent-calm');
       setStage('setup');
       setMobileStep(1);
+      setTimeLeft(60);
       setFinalizedTranscripts([]);
       setActivePartials({});
       setCallRecord(null);
@@ -164,6 +166,14 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [finalizedTranscripts, activePartials]);
+
+  useEffect(() => {
+    let interval: any;
+    if (stage === 'connected' && timeLeft > 0) {
+      interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [stage, timeLeft]);
 
   useEffect(() => { return () => cleanupSession(); }, []);
 
@@ -292,18 +302,23 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       streamWsRef.current = streamWs;
       streamWs.onopen = () => {
         streamWs.send(JSON.stringify({ event: "start", start: { callSid: call.twilioCallSid, streamSid: "browser_stream_" + Date.now() } }));
-        startAudioStreaming(call.twilioCallSid);
       };
       streamWs.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.event === "media") {
+          if (msg.event === 'ready') {
+            setStage('connected');
+            setTimeLeft(60);
+            startAudioStreaming(call.twilioCallSid);
+          } else if (msg.event === "media") {
             playAudioChunk(msg.media.payload, msg.media.encoding, msg.media.sampleRate);
           } else if (msg.event === "clear") {
             activeAudioNodesRef.current.forEach(n => { try { n.stop(); } catch(e) {} });
             activeAudioNodesRef.current = [];
             nextStartTimeRef.current = 0;
             setIsAgentSpeaking(false);
+          } else if (msg.event === "end") {
+            handleEndSandboxCall();
           }
         } catch (err) { console.error("Stream error:", err); }
       };
@@ -325,7 +340,6 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
           }
         } catch (err) { console.error("Transcript error:", err); }
       };
-      setStage('connected');
     } catch (err: any) {
       console.error("Sandbox init error:", err);
       alert("Failed to start Sandbox: " + err.message);
@@ -351,6 +365,19 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     cleanupSession();
   };
 
+  const handleCloseModal = () => {
+    if (stage === 'connected' || stage === 'connecting') {
+      handleEndSandboxCall();
+    }
+    onClose();
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   if (!open) return null;
 
   const currentDemoAgent = DEMO_AGENTS.find(d => d.id === selectedModuleId);
@@ -371,7 +398,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         className="w-full max-w-4xl bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200 md:h-[560px] max-h-[90vh]"
       >
         <button 
-          onClick={onClose} 
+          onClick={handleCloseModal} 
           className="absolute top-4 right-4 z-50 text-zinc-400 hover:text-zinc-700 focus:outline-none p-1.5 rounded-full hover:bg-zinc-100 transition-all"
         >
           <X className="w-4 h-4" />
@@ -605,8 +632,8 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 </div>
               </div>
               <div className="text-center space-y-1">
-                <h3 className="text-[13px] font-bold text-zinc-900 tracking-tight">Connecting</h3>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Pipeline starting</p>
+                <h3 className="text-[13px] font-bold text-zinc-900 tracking-tight">Setting up the sandbox for you...</h3>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Waking up the Agent</p>
               </div>
             </div>
           </div>
@@ -623,7 +650,11 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] animate-pulse" />
                   <span className="text-[9px] font-bold text-zinc-900 uppercase tracking-widest">Live</span>
                 </div>
-                <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">8kHz μ-Law</span>
+                <div className={`px-2.5 py-1 rounded-md border shadow-sm flex items-center transition-colors ${timeLeft <= 10 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-zinc-200 text-zinc-600'}`}>
+                  <span className="text-[10px] font-bold tracking-widest font-mono">
+                    {formatTime(timeLeft)}
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-col items-center justify-center flex-1 w-full z-10 py-8">
@@ -675,9 +706,15 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
               <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-5">
                 {finalizedTranscripts.length === 0 && Object.keys(activePartials).length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
-                    <Sparkles className="w-6 h-6 text-blue-500 mb-2" />
-                    <p className="text-[12px] font-semibold text-zinc-500">Connection established</p>
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <div className="relative flex items-center justify-center w-12 h-12 mb-4">
+                      <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-10"></div>
+                      <div className="relative bg-zinc-50 border border-zinc-200 rounded-full p-3 shadow-sm">
+                        <Mic className="w-4 h-4 text-blue-600" />
+                      </div>
+                    </div>
+                    <p className="text-[13px] font-bold text-zinc-900 tracking-tight mb-1">Connection established</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Say hello to begin</p>
                   </div>
                 ) : (
                   [...finalizedTranscripts, ...Object.values(activePartials)].map((line, idx) => (

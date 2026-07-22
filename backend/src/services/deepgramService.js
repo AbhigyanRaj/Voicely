@@ -42,7 +42,8 @@ class DeepgramService extends EventEmitter {
       language: 'en-US',
       smart_format: true,
       interim_results: true, // Get partial transcripts
-      endpointing: 500, // 500ms silence to finalize utterance (allows user to breathe without AI interrupting)
+      endpointing: 300, // Faster endpointing to confirm speech quicker
+      utterance_end_ms: '1000', // Safety net to force finalize even with background noise
       encoding: 'mulaw',
       sample_rate: 8000,
       channels: 1,

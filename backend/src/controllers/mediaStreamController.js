@@ -271,6 +271,12 @@ export function setupMediaStreamWebSocket(server = null) {
                   broadcastTranscriptUpdate(call._id.toString(), { source: 'ai', text: fullText, isFinal: true });
                 });
 
+                callHandler.on('callEnded', () => {
+                  if (ws.readyState === ws.OPEN) {
+                     ws.send(JSON.stringify({ event: 'end' }));
+                  }
+                });
+
 
                 // Initialize Deepgram connection
                 const STT_LANG_MAP = {
@@ -315,7 +321,8 @@ export function setupMediaStreamWebSocket(server = null) {
                   language: sttLanguage,
                   smart_format: true,
                   interim_results: true,
-                  endpointing: 200,
+                  endpointing: 300,
+                  utterance_end_ms: '1000',
                   encoding: 'mulaw',
                   sample_rate: 8000,
                   channels: 1,
@@ -327,6 +334,11 @@ export function setupMediaStreamWebSocket(server = null) {
                 }
 
                 await deepgramService.createLiveConnection(connectionConfig);
+                
+                // Signal to frontend that the sandbox is fully ready
+                if (isBrowserSandbox && ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ event: 'ready' }));
+                }
 
                 // Initialize buffered transcript array
                 sessionData.bufferedTranscript = [];

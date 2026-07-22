@@ -43,17 +43,19 @@ class StreamingCallHandler extends EventEmitter {
         if (!this.module) throw new Error('Module not found');
       }
 
-      // 3-minute hard limit for sandbox calls, exempting admins
+      // 1-minute hard limit for sandbox calls, exempting admins
       if (this.call && this.callSid.startsWith('browser_sandbox_')) {
         const isAdmin = this.call.userId && this.call.userId.isAdmin;
         if (!isAdmin) {
-          logger.info(`Applying 3-minute sandbox limit for call ${this.callSid}`);
+          logger.info(`Applying 1-minute sandbox limit for call ${this.callSid}`);
           setTimeout(() => {
-            if (this.state !== 'ENDED') {
+            this.timeLimitReached = true;
+            if (this.state === 'IDLE') {
               this.state = 'ENDED'; // Ensure we don't process further text
-              this.emit('aiResponseComplete', 'This sandbox conversation has reached its three minute limit. Thank you for testing Voicely. Goodbye.');
+              this.emit('aiResponseComplete', "Okay, I think the timer has completed. I'll call you later. Kindly log in to use further.");
+              setTimeout(() => this.emit('callEnded'), 5000);
             }
-          }, 180000);
+          }, 60000);
         }
       }
       const langCode = this.call?.selectedLanguage || 'english';
@@ -244,17 +246,28 @@ CRUCIAL RULES:
 
       const startComplete = performance.now();
       this.emit('aiResponseComplete', fullResponse);
+      
+      if (this.timeLimitReached && this.state !== 'ENDED') {
+        this.state = 'ENDED';
+        setTimeout(() => {
+          this.emit('aiResponseComplete', "Okay, I think the timer has completed. I'll call you later. Kindly log in to use further.");
+          setTimeout(() => this.emit('callEnded'), 5000);
+        }, 1000);
+      }
+
       const completeDuration = performance.now() - startComplete;
       logger.info(`[LATENCY TIMER] aiResponseComplete emission took ${completeDuration.toFixed(1)}ms`);
 
       const totalDuration = performance.now() - startTotal;
-      logger.info(`[LATENCY TIMER] Total processFinalTranscript finished in ${totalDuration.toFixed(1)}ms`);
-
+      logger.info(`[LATENCY TIMER] Total processFinalTranscript took ${totalDuration.toFixed(1)}ms`);
+      
     } catch (error) {
-      logger.error('Error in conversational processing', error);
-      this.emit('error', error);
-    } finally {
+      logger.error('Error processing final transcript', error);
       this.state = 'IDLE';
+    } finally {
+      if (this.state !== 'ENDED') {
+        this.state = 'IDLE';
+      }
     }
   }
   
