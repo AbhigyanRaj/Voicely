@@ -86,6 +86,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [selectedVoice, setSelectedVoice] = useState<string>("a7a59115-2425-4192-844c-1e98ec7d6877");
   const [ttsProvider, setTtsProvider] = useState<string>("cartesia");
   const [optimizeFor, setOptimizeFor] = useState<'latency' | 'quality'>('latency');
+  const [mobileStep, setMobileStep] = useState<1 | 2>(1);
 
   useEffect(() => {
     if (selectedModuleId) {
@@ -153,6 +154,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       setAgentSource('demo');
       setSelectedModuleId('demo-agent-calm');
       setStage('setup');
+      setMobileStep(1);
       setFinalizedTranscripts([]);
       setActivePartials({});
       setCallRecord(null);
@@ -366,8 +368,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div
-        className="w-full max-w-4xl bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200"
-        style={{ height: '560px', maxHeight: '90vh' }}
+        className="w-full max-w-4xl bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200 md:h-[560px] max-h-[90vh]"
       >
         <button 
           onClick={onClose} 
@@ -378,9 +379,9 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
         {/* ── SETUP ── */}
         {stage === 'setup' && (
-          <div className="flex flex-1 h-full">
+          <div className="flex flex-col md:flex-row flex-1 h-full overflow-y-auto md:overflow-hidden">
             {/* Left: Agent Selection */}
-            <div className="w-full md:w-[45%] border-r border-zinc-200 bg-[#F9FAFB] flex flex-col relative overflow-hidden">
+            <div className={`w-full md:w-[45%] border-b md:border-b-0 md:border-r border-zinc-200 bg-[#F9FAFB] flex-col relative shrink-0 md:h-full ${mobileStep === 1 ? 'flex' : 'hidden md:flex'}`}>
               <div className="p-6 pb-4 relative z-10">
                 <div className="flex items-center gap-2 mb-6">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] animate-pulse" />
@@ -410,7 +411,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 <p className="text-[9px] text-zinc-400 text-center mb-4 uppercase tracking-widest font-semibold">Demo: Pre-built, no login. My Agent: Login required.</p>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar relative z-10">
+              <div className="flex-1 overflow-visible md:overflow-y-auto px-6 pb-6 custom-scrollbar relative z-10">
                 {loadingModules ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
@@ -504,11 +505,29 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                   </div>
                 )}
               </div>
+
+              {/* Mobile Next Button */}
+              <div className="md:hidden mt-auto p-4 border-t border-zinc-200 bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)] z-20">
+                <button
+                  onClick={() => setMobileStep(2)}
+                  disabled={!selectedModuleId || (agentSource === 'custom' && !user)}
+                  className="w-full h-10 bg-zinc-900 hover:bg-black disabled:opacity-50 text-white text-[11px] font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2"
+                >
+                  Next Step
+                </button>
+              </div>
             </div>
 
             {/* Right: Settings & CTA */}
-            <div className="hidden md:flex flex-1 p-8 flex-col bg-white relative overflow-y-auto custom-scrollbar">
+            <div className={`flex-col p-6 md:p-8 bg-white relative shrink-0 md:flex-1 md:overflow-y-auto custom-scrollbar ${mobileStep === 2 ? 'flex' : 'hidden md:flex'}`}>
               <div className="relative z-10">
+                <button 
+                  onClick={() => setMobileStep(1)} 
+                  className="md:hidden flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-6 hover:text-zinc-800 transition-colors"
+                >
+                  <ChevronDown className="w-3.5 h-3.5 rotate-90" />
+                  Back to Agents
+                </button>
                 <h3 className="text-[15px] font-bold text-zinc-900 mb-1 tracking-tight">Simulation Parameters</h3>
                 <p className="text-zinc-500 text-[11px] mb-8">Configure the environment for your test call.</p>
                 
@@ -595,9 +614,9 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
 
         {/* ── CONNECTED ── */}
         {stage === 'connected' && (
-          <div className="flex flex-1 h-full bg-white overflow-hidden">
+          <div className="flex flex-col md:flex-row flex-1 h-full bg-white overflow-y-auto md:overflow-hidden">
             {/* Left: Orb & Controls */}
-            <div className="w-[40%] border-r border-zinc-200 bg-[#F9FAFB] flex flex-col items-center justify-between p-6 relative">
+            <div className="w-full md:w-[40%] border-b md:border-b-0 md:border-r border-zinc-200 bg-[#F9FAFB] flex flex-col items-center justify-between p-6 relative shrink-0">
               
               <div className="w-full flex items-center justify-between z-10">
                 <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white border border-zinc-200 shadow-sm">
@@ -649,7 +668,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
             </div>
 
             {/* Right: Transcript */}
-            <div className="flex-1 flex flex-col bg-white relative">
+            <div className="flex-1 flex flex-col bg-white relative min-h-[300px] md:min-h-0 shrink-0">
               <div className="px-6 py-4 border-b border-zinc-200">
                 <h4 className="text-[13px] font-bold text-zinc-900 tracking-tight">Live Transcript</h4>
               </div>
