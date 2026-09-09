@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import ModulesPage from '../ModulesPage';
-import { AuthProvider } from '../../contexts/AuthContext';
 
 // Mock the Auth context to provide a user
 vi.mock('../../contexts/AuthContext', () => ({
@@ -31,9 +31,11 @@ const queryClient = new QueryClient({
 describe('ModulesPage', () => {
   it('renders the ModulesPage header correctly', () => {
     render(
-      <QueryClientProvider client={queryClient}>
-        <ModulesPage />
-      </QueryClientProvider>
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ModulesPage />
+        </QueryClientProvider>
+      </MemoryRouter>
     );
 
     expect(screen.getByText(/Voice Agents/i)).toBeInTheDocument();
@@ -41,9 +43,11 @@ describe('ModulesPage', () => {
 
   it('loads and displays agents', async () => {
     render(
-      <QueryClientProvider client={queryClient}>
-        <ModulesPage />
-      </QueryClientProvider>
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ModulesPage />
+        </QueryClientProvider>
+      </MemoryRouter>
     );
 
     // It should eventually show the mocked agent

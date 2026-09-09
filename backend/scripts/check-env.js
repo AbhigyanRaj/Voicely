@@ -1,64 +1,65 @@
+/**
+ * Verify the environment matches what the server actually requires.
+ *
+ * Kept in sync with src/utils/envValidator.js. The previous version loaded
+ * scripts/.env (which never exists) and checked five providers the product no
+ * longer uses, so it reported a correctly-configured server as broken.
+ */
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Load .env file
-dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-console.log('\n🔍 Environment Variables Check\n');
-console.log('='.repeat(60));
-
-const requiredVars = [
-  'GOOGLE_TTS_API_KEY',
-  'MONGODB_URI',
-  'JWT_SECRET',
-  'TWILIO_ACCOUNT_SID',
-  'TWILIO_AUTH_TOKEN',
-  'TWILIO_PHONE_NUMBER',
-  'GEMINI_API_KEY'
+const REQUIRED = [
+  ['MONGODB_URI', 'Database connection string'],
+  ['JWT_SECRET', 'Signs dashboard session tokens'],
+  ['ENCRYPTION_KEY', 'Encrypts stored provider credentials (64 hex chars)'],
+  ['DEEPGRAM_API_KEY', 'Speech-to-text'],
+  ['GROQ_API_KEY', 'Conversational LLM'],
+  ['CARTESIA_API_KEY', 'Text-to-speech'],
 ];
 
-const optionalVars = [
-  'ELEVENLABS_API_KEY',
-  'DEEPGRAM_API_KEY',
-  'BASE_URL',
-  'FRONTEND_URL'
+const OPTIONAL = [
+  ['GOOGLE_CLIENT_ID', 'Required for Google sign-in; without it /auth/google refuses every request'],
+  ['REDIS_URL', 'Response cache; falls back to an in-process cache'],
+  ['DEEPGRAM_MODEL', 'Defaults to nova-2-phonecall'],
+  ['SPECULATIVE_PREFILL', 'Set to false to trade latency back for LLM spend'],
+  ['LOG_LEVEL', 'Defaults to info; set debug to see per-turn detail'],
+  ['PORT', 'Defaults to 10000'],
 ];
 
-console.log('\n📋 Required Variables:');
-requiredVars.forEach(varName => {
-  const value = process.env[varName];
-  const status = value ? '✅' : '❌';
-  const display = value ? `${value.substring(0, 10)}...${value.substring(value.length - 4)}` : 'NOT SET';
-  console.log(`   ${status} ${varName.padEnd(25)} ${display}`);
-});
+console.log('\nEnvironment check\n' + '='.repeat(62));
 
-console.log('\n📋 Optional Variables:');
-optionalVars.forEach(varName => {
-  const value = process.env[varName];
-  const status = value ? '✅' : '⚠️';
-  const display = value ? (value.length > 30 ? `${value.substring(0, 10)}...${value.substring(value.length - 4)}` : value) : 'NOT SET';
-  console.log(`   ${status} ${varName.padEnd(25)} ${display}`);
-});
-
-console.log('\n' + '='.repeat(60));
-
-// Check if critical TTS keys are present
-const hasTTS = process.env.GOOGLE_TTS_API_KEY || process.env.ELEVENLABS_API_KEY;
-if (hasTTS) {
-  console.log('✅ TTS Configuration: OK');
-  if (process.env.GOOGLE_TTS_API_KEY) {
-    console.log('   Primary: Google TTS (Indian voices)');
+let missing = 0;
+console.log('\nRequired:');
+for (const [key, description] of REQUIRED) {
+  const value = process.env[key];
+  if (value && value.trim() !== '') {
+    console.log(`  OK       ${key}`);
+  } else {
+    console.log(`  MISSING  ${key}  -- ${description}`);
+    missing++;
   }
-  if (process.env.ELEVENLABS_API_KEY) {
-    console.log('   Secondary: ElevenLabs');
-  }
-  console.log('   Fallback: Twilio Polly');
-} else {
-  console.log('⚠️ TTS Configuration: Only Twilio Polly available');
 }
 
-console.log('\n');
+console.log('\nOptional:');
+for (const [key, description] of OPTIONAL) {
+  const value = process.env[key];
+  console.log(`  ${value && value.trim() !== '' ? 'set     ' : 'unset   '} ${key}  -- ${description}`);
+}
+
+// The one required value with a format constraint: crypto.createCipheriv needs
+// exactly 32 bytes, so a wrong length fails at call time rather than at boot.
+if (process.env.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
+  console.log('\n  WARNING  ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).');
+  missing++;
+}
+
+console.log('\n' + '='.repeat(62));
+if (missing > 0) {
+  console.log(`${missing} problem(s). The server calls process.exit(1) on a missing required var.\n`);
+  process.exit(1);
+}
+console.log('All required environment variables are present.\n');

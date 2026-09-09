@@ -1,5 +1,4 @@
-import React from 'react';
-import { Settings, User, CreditCard, Bell } from 'lucide-react';
+import { User, CreditCard, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const SettingsPage = () => {

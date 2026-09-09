@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { downsampleAndEncodeMulaw, float32ToPCM16, muLawToLinear } from '../lib/audioUtils';
+import { float32ToPCM16, muLawToLinear } from '../lib/audioUtils';
 import { getApiBaseUrl } from '../lib/api';
 
 export const useDeveloperS2S = () => {

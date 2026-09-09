@@ -34,7 +34,8 @@ describe('SettingsPage', () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByText(/Settings/i)).toBeInTheDocument();
+    // /Settings/i alone matches the h1, the subtitle and "Account Settings".
+    expect(screen.getByRole('heading', { level: 1, name: /^Settings$/i })).toBeInTheDocument();
     expect(screen.getByText(/Manage your account/i)).toBeInTheDocument();
   });
 });

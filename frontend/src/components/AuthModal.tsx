@@ -56,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, defaultTab = 'login'
       if (tab === 'signup') {
         const result = signupSchema.safeParse({ name, email, password });
         if (!result.success) {
-          setError(result.error.errors[0].message);
+          setError(result.error.issues[0].message);
           setSubmitting(false);
           return;
         }
@@ -64,7 +64,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, defaultTab = 'login'
       } else {
         const result = loginSchema.safeParse({ email, password });
         if (!result.success) {
-          setError(result.error.errors[0].message);
+          setError(result.error.issues[0].message);
           setSubmitting(false);
           return;
         }

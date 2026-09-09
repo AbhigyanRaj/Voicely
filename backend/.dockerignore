@@ -1,0 +1,18 @@
+# The build context is this directory, so the repo-root .dockerignore never
+# applies here. Without this file `COPY . .` baked backend/.env -- real
+# credentials -- into an image layer, alongside a stale node_modules.
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+*.log
+coverage
+.nyc_output
+tests
+scripts
+src/audio/*.mp3
+src/audio/*.wav
+src/audio/*.raw
+sample-audio
+.DS_Store

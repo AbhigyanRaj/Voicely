@@ -1,6 +1,5 @@
 import React from 'react';
 import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, RadarChart, PolarGrid, 
