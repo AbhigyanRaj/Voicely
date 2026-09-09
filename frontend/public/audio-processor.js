@@ -1,56 +1,56 @@
+/**
+ * Mic tap for the Voice Sandbox.
+ *
+ * Emits signed 16-bit PCM at the AudioContext's own sample rate, in ~20ms
+ * frames -- the same cadence Twilio's media streams use.
+ *
+ * This used to accumulate 2048 samples and mu-law encode them. Against the 8kHz
+ * context the sandbox pinned, 2048 samples is 256ms of audio held before a
+ * single byte left the browser: the largest fixed delay anywhere in the turn,
+ * and roughly four frames per second.
+ */
 class AudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Use a small buffer to accumulate samples before sending to main thread
-    this.bufferSize = 2048;
-    this.buffer = new Float32Array(this.bufferSize);
+
+    // ~20ms of audio, rounded to whole render quanta (128 frames each) so the
+    // buffer fills exactly rather than straddling a quantum boundary.
+    const targetFrames = Math.round(sampleRate * 0.02);
+    const quanta = Math.max(1, Math.round(targetFrames / 128));
+    this.bufferSize = quanta * 128;
+
+    this.buffer = new Int16Array(this.bufferSize);
     this.bufferIndex = 0;
+
+    this.port.postMessage({ type: 'ready', sampleRate, frameSize: this.bufferSize });
   }
 
-  linearToMuLaw(sample) {
-    const BIAS = 0x84;
-    const CLIP = 32635;
-    const sign = sample < 0 ? 0x80 : 0;
-    if (sample < 0) sample = -sample;
-    if (sample > CLIP) sample = CLIP;
-    sample = (sample + BIAS) >> 0;
-
-    let exponent = 7;
-    for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; expMask >>= 1) {
-      exponent--;
-    }
-    const mantissa = (sample >> (exponent + 3)) & 0x0f;
-    const byte = ~(sign | (exponent << 4) | mantissa);
-    return byte & 0xff;
-  }
-
-  process(inputs, outputs, parameters) {
+  process(inputs) {
     const input = inputs[0];
-    if (input.length > 0) {
-      const channelData = input[0];
-      
-      for (let i = 0; i < channelData.length; i++) {
-        this.buffer[this.bufferIndex++] = channelData[i];
-        
-        if (this.bufferIndex >= this.bufferSize) {
-          // Process full buffer to mulaw
-          const outputBuffer = new Uint8Array(this.bufferSize);
-          for (let j = 0; j < this.bufferSize; j++) {
-            let sample = this.buffer[j];
-            if (sample < -1) sample = -1;
-            if (sample > 1) sample = 1;
-            const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-            outputBuffer[j] = this.linearToMuLaw(intSample);
-          }
-          
-          // Send to main thread
-          this.port.postMessage(outputBuffer);
-          
-          this.bufferIndex = 0;
-        }
+    if (!input || input.length === 0) return true;
+
+    const channelData = input[0];
+    if (!channelData) return true;
+
+    for (let i = 0; i < channelData.length; i++) {
+      let sample = channelData[i];
+      if (sample > 1) sample = 1;
+      else if (sample < -1) sample = -1;
+      // Asymmetric scaling: int16 holds -32768..32767.
+      this.buffer[this.bufferIndex++] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+
+      if (this.bufferIndex >= this.bufferSize) {
+        // Copy, because the transfer hands ownership away and we keep reusing
+        // this.buffer for the next frame.
+        const frame = this.buffer.slice();
+        this.port.postMessage({ type: 'audio', buffer: frame.buffer, capturedAt: currentTime }, [
+          frame.buffer,
+        ]);
+        this.bufferIndex = 0;
       }
     }
-    return true; // Keep processor alive
+
+    return true;
   }
 }
 

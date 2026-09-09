@@ -85,3 +85,37 @@ export const base64ToUint8Array = (base64: string): Uint8Array => {
   }
   return bytes;
 };
+
+/**
+ * Decode one wire payload from the voice pipeline into float samples.
+ *
+ * Encodings in use:
+ *   pcm_f32le  32-bit float LE  -- Cartesia wideband, browser sessions
+ *   pcm_s16le  16-bit signed LE -- linear16 providers
+ *   mulaw      8-bit G.711      -- telephony
+ *
+ * @param base64Payload audio as sent over the WebSocket
+ * @param encoding      one of the above; anything else is treated as mulaw
+ */
+export const decodeAudioPayload = (base64Payload: string, encoding: string): Float32Array => {
+  const bytes = base64ToUint8Array(base64Payload);
+
+  if (encoding === 'pcm_f32le') {
+    // Copy into a fresh buffer: a Uint8Array from atob is not guaranteed to be
+    // 4-byte aligned, and Float32Array over a misaligned buffer throws.
+    const aligned = new ArrayBuffer(bytes.byteLength - (bytes.byteLength % 4));
+    new Uint8Array(aligned).set(bytes.subarray(0, aligned.byteLength));
+    return new Float32Array(aligned);
+  }
+
+  if (encoding === 'pcm_s16le') {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const out = new Float32Array(bytes.byteLength >> 1);
+    for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
+    return out;
+  }
+
+  const out = new Float32Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) out[i] = muLawToLinear(bytes[i]);
+  return out;
+};

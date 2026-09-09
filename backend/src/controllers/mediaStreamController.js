@@ -1,22 +1,24 @@
-import express from 'express';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import DeepgramService from '../services/deepgramService.js';
 import Call from '../models/Call.js';
 import StreamingCallHandler from '../services/streamingCallHandler.js';
-import StreamingGoogleTTS from '../services/streamingGoogleTTS.js';
-import { StreamingSarvamTTS } from '../services/sarvamService.js';
-import StreamingDeepgramTTS from '../services/streamingDeepgramTTS.js';
-import StreamingCartesiaTTS from '../services/streamingCartesiaTTS.js';
-import { extractAnswersJSON, evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
-import { broadcastTranscriptUpdate } from '../websocket/liveCallServer.js';
-import * as callService from '../services/callService.js';
+import { createTTS } from '../services/ttsFactory.js';
+import { evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
+import { broadcastTranscriptUpdate, cleanupCallClients } from '../websocket/liveCallServer.js';
+import { record } from '../utils/latencyMetrics.js';
 import logger from '../utils/logger.js';
-
-const router = express.Router();
 
 // Store active streaming sessions
 const activeSessions = new Map();
+
+// Cartesia "Kendra": the default sandbox voice.
+const DEFAULT_VOICE_ID = '79a125e8-cd45-4c13-8a67-188112f4dd22';
+
+// How long to wait after an interim-final segment before treating the turn as
+// over. Only used when Deepgram has *not* set speech_final; when it has, its own
+// endpointer already made the call and we act immediately.
+const TURN_DEBOUNCE_MS = 120;
 
 
 
@@ -51,18 +53,22 @@ const handleCallCompletion = async (callSid, sessionData) => {
     // Extract questions array
     const questionsList = module.questions.sort((a, b) => a.order - b.order).map(q => q.question);
 
-    const workspace = await import('../models/Workspace.js').then(m => m.default.findById(call.workspaceId));
+    // The workspace lookup does not depend on the analysis, so overlap them
+    // rather than paying a database round trip before the first LLM call.
+    const [workspace, deepAnalysis] = await Promise.all([
+      import('../models/Workspace.js').then(m => m.default.findById(call.workspaceId)),
+      performDeepAnalysis(
+        sessionData.callHandler.chatHistory,
+        module.type || 'custom',
+        call.customerName,
+        module.systemPrompt || 'General Business Inquiry',
+        questionsList
+      )
+    ]);
     const category = workspace?.category || 'startup';
 
-    // Perform Deep Behavioral Analysis
-    const deepAnalysis = await performDeepAnalysis(
-      sessionData.callHandler.chatHistory,
-      module.type || 'custom',
-      call.customerName,
-      module.systemPrompt || 'General Business Inquiry',
-      questionsList
-    );
-
+    // evaluateApplication consumes deepAnalysis.extractedData, so this one has
+    // to follow rather than run alongside.
     // Evaluate application based on category with full transcript context
     const evaluationStatus = await evaluateApplication(
       module.type || 'custom',
@@ -86,8 +92,8 @@ const handleCallCompletion = async (callSid, sessionData) => {
       },
       stageAnalysis: {
         totalQuestions: questionsList.length,
-        questionsReached: deepAnalysis.stageAnalysis.questionsReached,
-        dropOffPoint: deepAnalysis.stageAnalysis.dropOffPoint,
+        questionsReached: deepAnalysis.stageAnalysis?.questionsReached,
+        dropOffPoint: deepAnalysis.stageAnalysis?.dropOffPoint,
       }
     };
     
@@ -98,19 +104,23 @@ const handleCallCompletion = async (callSid, sessionData) => {
     call.transcription = sessionData.callHandler.chatHistory;
 
     await call.save();
-    logger.success(`Call ${callSid} analytics saved successfully. Questions: ${deepAnalysis.stageAnalysis.questionsReached}/${questionsList.length}`);
+    logger.success(`Call ${callSid} analytics saved successfully. Questions: ${deepAnalysis.stageAnalysis?.questionsReached ?? '?'}/${questionsList.length}`);
 
-    // EXCLUSIVE: Sync call to Lead Journey / Timeline
-    try {
-        const { syncCallToLead } = await import('../services/leadService.js');
-        await syncCallToLead(call, deepAnalysis);
-    } catch (leadErr) {
-        logger.error(`Lead Sync failed for call ${callSid}:`, leadErr);
-    }
 
 
   } catch (err) {
     logger.error(`Error in handleCallCompletion for ${callSid}:`, err);
+  } finally {
+    // Releases the /live-call subscribers and, crucially, deletes this call's
+    // entry from the in-memory `callStates` map. That map is only ever pruned
+    // here, and this call site was lost when lead-sync was removed -- so every
+    // session leaked its full transcript history for the lifetime of the process.
+    // In `finally` because the analysis above can throw.
+    try {
+      if (sessionData?.callId) cleanupCallClients(sessionData.callId);
+    } catch (cleanupErr) {
+      logger.error('Error cleaning up live-call clients', cleanupErr);
+    }
   }
 };
 
@@ -149,16 +159,37 @@ export function setupMediaStreamWebSocket(server = null) {
     let streamSid = null;
     let callSid = null;
     let deepgramService = null;
+    // Only what is actually read downstream. `partialTranscripts` used to
+    // accumulate every interim result for the life of the session and was never
+    // read; `finalTranscripts`, `currentUtterance` and `lastTranscriptTime` were
+    // written and never read at all.
     let sessionData = {
-      partialTranscripts: [],
-      finalTranscripts: [],
-      currentUtterance: '',
-      lastTranscriptTime: Date.now(),
-      silenceTimeout: null
+      silenceTimeout: null,
+      // Turn timing, the anchor for turn.mouth_to_ear.
+      turnStartedAt: null,
+      firstAudioSent: false,
+      lastPartialAt: null,
+      // Coalesced AI text for the transcript sidechannel.
+      aiPartialText: '',
+      aiPartialTimer: null
     };
+    const connectedAt = performance.now();
 
-    ws.on('message', async (message) => {
+    ws.on('message', async (message, isBinary) => {
       try {
+        // Browser sandbox clients send raw PCM frames as binary. Twilio's
+        // protocol wraps audio in base64 inside JSON, which costs 36% more
+        // bytes plus a JSON.parse per frame; the browser is not Twilio, so it
+        // uses the cheap path and only control events stay JSON.
+        //
+        // Note `isBinary` rather than Buffer.isBuffer: ws hands text frames over
+        // as Buffers too, so testing the type would swallow the JSON control
+        // messages as if they were audio.
+        if (isBinary) {
+          if (message.length > 0 && deepgramService) deepgramService.sendAudio(message);
+          return;
+        }
+
         const messageString = message.toString();
         const msg = JSON.parse(messageString);
         
@@ -175,69 +206,110 @@ export function setupMediaStreamWebSocket(server = null) {
             logger.info(`Media Stream Started [CallSid: ${callSid}] [StreamSid: ${streamSid}]`);
 
             try {
-              // Retry finding the call record with a small delay
-              let call = null;
-              for (let i = 0; i < 5; i++) {
+              // The browser sandbox creates the Call row synchronously before it
+              // opens this socket, and Twilio only streams after our webhook
+              // responded, so by the time `start` arrives the row exists. The old
+              // 5x500ms retry loop spent up to 2.5s of every cold start waiting
+              // for a race that cannot happen. One short retry covers replica lag.
+              let call = await Call.findOne({ twilioCallSid: callSid });
+              if (!call) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
                 call = await Call.findOne({ twilioCallSid: callSid });
-                if (call) break;
-                logger.warn(`Call record not found yet (attempt ${i + 1}/5), retrying...`);
-                await new Promise(resolve => setTimeout(resolve, 500));
               }
 
               if (call) {
-                // Fetch BYOK API Keys for campaigns (not for sandbox)
-                let llmApiKey = null;
-                let sttApiKey = null;
-                let ttsApiKey = null;
-                const isBrowserSandbox = req.url.includes('/browser');
+                // Sessions run on the server's own provider keys.
+                const llmApiKey = null;
+                const ttsApiKey = null;
+                const sttApiKey = null;
+                const isBrowserSandbox = true;
 
-                if (!call.demoAgentId && !isBrowserSandbox) {
-                    const ProviderCredential = (await import('../models/ProviderCredential.js')).default;
-                    const { decrypt } = await import('../utils/crypto.js');
-                    const userProviders = await ProviderCredential.find({ userId: call.userId });
-                    const getDecryptedKey = (pName) => {
-                        const p = userProviders.find(x => x.providerName === pName);
-                        if (p && p.credentials && p.credentials.authToken) {
-                            return decrypt(p.credentials.authToken);
-                        }
-                        return null;
-                    };
-                    llmApiKey = getDecryptedKey('gemini');
-                    sttApiKey = getDecryptedKey('deepgram');
-                    const callTtsProvider = call.ttsProvider || 'google';
-                    ttsApiKey = getDecryptedKey(callTtsProvider);
-                }
+                // Open the STT socket. Deepgram's handshake is ~900ms from
+                // here, so it is started now and awaited just before `ready`,
+                // overlapping the handler and TTS setup below rather than
+                // running strictly after them.
+
+                deepgramService = new DeepgramService(sttApiKey);
+
+                // Wire format is declared by the client, not inferred from the
+                // path. The current sandbox client sends raw linear16 at its
+                // AudioContext rate and says so via ?sampleRate=; anything that
+                // does not declare a rate (Twilio, or an older cached bundle
+                // still posting base64 mulaw) keeps the 8 kHz mulaw contract.
+                const declaredRate = Number(url.searchParams.get('sampleRate'));
+                const isLinearClient =
+                  isBrowserSandbox && Number.isFinite(declaredRate) && declaredRate > 0;
+
+                const connectionConfig = {
+                  language: 'en-US',
+                  model: process.env.DEEPGRAM_MODEL || 'nova-2-phonecall',
+                  smart_format: true,
+                  interim_results: true,
+                  // 150ms rather than 300ms, with no_delay so Deepgram stops
+                  // padding before it finalizes. The application-level debounce
+                  // is a second endpointer stacked on this one, so the pair was
+                  // costing well over half a second per turn.
+                  endpointing: 150,
+                  no_delay: true,
+                  utterance_end_ms: '1000',
+                  encoding: isLinearClient ? 'linear16' : 'mulaw',
+                  sample_rate: isLinearClient ? declaredRate : 8000,
+                  channels: 1,
+                  punctuate: true,
+                  keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2']
+                };
+
+                // Deepgram's handshake is ~900ms from here, so the connection is
+                // started now and awaited once every handler is attached, which
+                // overlaps it with the handler and TTS setup below.
+                //
+                // createLiveConnection also genuinely waits for the socket to
+                // open: it used to return the instant listen.live() was called, so
+                // `ready` went out while the socket was still connecting and every
+                // frame sent in that window was silently dropped -- the user's
+                // first word vanished, they repeated themselves, and it read as
+                // latency.
+                const deepgramReady = deepgramService.createLiveConnection(connectionConfig);
 
                 logger.success(`Call record found: ${call._id}. Initializing handlers...`);
                 const callHandler = new StreamingCallHandler(callSid, call.moduleId, call.phoneNumber, call.customerName, llmApiKey);
-                await callHandler.initialize();
-                
-                // CRITICAL: Inject prior context for scheduled follow-ups
-                if (call.priorContext) {
-                    logger.info(`Injecting prior context into Call ${callSid}`);
-                    callHandler.chatHistory = `[PREVIOUS CONVERSATION CONTEXT]\n${call.priorContext}\n\n[NEW CALL START]\n` + callHandler.chatHistory;
-                }
+                // Hand over the document we already have. initialize() used to
+                // re-query the very same Call, making this the third fetch of one
+                // row in a single cold start.
+                await callHandler.initialize(call);
                 
                 sessionData.callHandler = callHandler;
+                // cleanupCallClients is keyed by the Mongo id, not the session sid.
+                sessionData.callId = call._id.toString();
 
                 // Initialize TTS based on explicit provider preference
-                const ttsProvider = call.ttsProvider || 'google';
                 const optimizeFor = call.optimizeFor || 'latency';
-                const isHighFidelity = isBrowserSandbox && optimizeFor === 'quality';
+                // Wideband for anything played through a browser. This used to
+                // also require optimizeFor === 'quality', but the sandbox UI has
+                // no control that sets it, so the whole 24 kHz path was dead code
+                // and the demo ran on 8 kHz telephony audio.
+                const isHighFidelity = isBrowserSandbox;
                 
-                let tts;
-                if (ttsProvider === 'sarvam') {
-                    tts = new StreamingSarvamTTS(call.selectedLanguage || 'hi-IN', call.selectedVoice || 'anushka', isHighFidelity, optimizeFor, ttsApiKey);
-                } else if (ttsProvider === 'cartesia') {
-                    tts = new StreamingCartesiaTTS(call.selectedVoice || '79a125e8-cd45-4c13-8a67-188112f4dd22', isHighFidelity, optimizeFor, ttsApiKey);
-                } else if (ttsProvider === 'deepgram') {
-                    tts = new StreamingDeepgramTTS(call.selectedVoice || 'aura-asteria-en', isHighFidelity, ttsApiKey);
-                } else {
-                    tts = new StreamingGoogleTTS(call.selectedVoice || 'NEERJA', isHighFidelity);
-                }
+                // Cartesia is the only TTS provider, over its streaming
+                // WebSocket where available. Opening that socket costs ~200ms, so
+                // it is started here and awaited alongside Deepgram's handshake
+                // rather than in series with it.
+                const ttsPromise = createTTS({
+                    voiceId: call.selectedVoice || DEFAULT_VOICE_ID,
+                    isWebCall: isHighFidelity,
+                    optimizeFor,
+                    apiKey: ttsApiKey
+                });
+                const { tts, transport: ttsTransport } = await ttsPromise;
                 sessionData.tts = tts;
 
-                logger.info(`TTS Initialized: [Voice: ${call.selectedVoice || 'DEFAULT'}] [Lang: ${call.selectedLanguage || 'en-IN'}] [Provider: ${ttsProvider}]`);
+                // A socket that drops mid-session would otherwise go silent.
+                if (typeof tts.on === 'function') {
+                    tts.on('transportClosed', () =>
+                        logger.warn(`TTS transport closed for ${callSid}`));
+                }
+
+                logger.info(`TTS Initialized: [Voice: ${call.selectedVoice || DEFAULT_VOICE_ID}] [Cartesia/${ttsTransport}]`);
 
                 // Set up TTS audio output handler
                 tts.on('audio', (audioData) => {
@@ -252,6 +324,15 @@ export function setupMediaStreamWebSocket(server = null) {
                         sampleRate = audioData.sampleRate || 8000;
                     }
 
+                    // The headline number: the user stopped speaking, and this is
+                    // the first audio of the reply reaching the wire. Recorded once
+                    // per turn; barge-in resets the flag so the next turn measures
+                    // cleanly.
+                    if (!sessionData.firstAudioSent && sessionData.turnStartedAt !== null) {
+                      sessionData.firstAudioSent = true;
+                      record('turn.mouth_to_ear', performance.now() - sessionData.turnStartedAt);
+                    }
+
                     ws.send(JSON.stringify({
                       event: 'media',
                       streamSid: streamSid,
@@ -260,14 +341,38 @@ export function setupMediaStreamWebSocket(server = null) {
                   }
                 });
 
+                // Coalesce the AI transcript sidechannel. This used to fire once
+                // per LLM token: a JSON.stringify plus a send on a second socket
+                // for every token, competing with the audio socket for the same
+                // event loop. It also sent each token on its own, and the client
+                // replaces rather than appends its partial, so the UI flickered
+                // through single tokens instead of showing the sentence so far.
+                const flushAiPartial = () => {
+                  sessionData.aiPartialTimer = null;
+                  if (!sessionData.aiPartialText) return;
+                  broadcastTranscriptUpdate(call._id.toString(), {
+                    source: 'ai',
+                    text: sessionData.aiPartialText,
+                    isFinal: false
+                  });
+                };
+
                 // Set up AI Event Handlers
                 callHandler.on('aiResponseChunk', (text) => {
                   tts.processTextChunk(text);
-                  broadcastTranscriptUpdate(call._id.toString(), { source: 'ai', text: text, isFinal: false });
+                  sessionData.aiPartialText += text;
+                  if (!sessionData.aiPartialTimer) {
+                    sessionData.aiPartialTimer = setTimeout(flushAiPartial, 120);
+                  }
                 });
 
                 callHandler.on('aiResponseComplete', (fullText) => {
                   tts.flush();
+                  if (sessionData.aiPartialTimer) {
+                    clearTimeout(sessionData.aiPartialTimer);
+                    sessionData.aiPartialTimer = null;
+                  }
+                  sessionData.aiPartialText = '';
                   broadcastTranscriptUpdate(call._id.toString(), { source: 'ai', text: fullText, isFinal: true });
                 });
 
@@ -278,77 +383,13 @@ export function setupMediaStreamWebSocket(server = null) {
                 });
 
 
-                // Initialize Deepgram connection
-                const STT_LANG_MAP = {
-                  'english': 'en-US',
-                  'en-in': 'en-IN',
-                  'en-us': 'en-US',
-                  'hindi': 'hi',
-                  'hi-in': 'hi',
-                  
-                  // Regional languages supported natively by Deepgram Nova-3
-                  'bengali': 'bn',
-                  'bn-in': 'bn',
-                  'telugu': 'te',
-                  'te-in': 'te',
-                  'marathi': 'mr',
-                  'mr-in': 'mr',
-                  'tamil': 'ta',
-                  'ta-in': 'ta',
-                  'kannada': 'kn',
-                  'kn-in': 'kn',
-                  'gujarati': 'gu',
-                  'gu-in': 'gu',
-                  'malayalam': 'ml',
-                  'ml-in': 'ml',
-                  'oriya': 'or',
-                  'or-in': 'or',
-                  'punjabi': 'pa',
-                  'pa-in': 'pa'
-                };
-
-                deepgramService = new DeepgramService(sttApiKey);
-                const sttLanguage = STT_LANG_MAP[call.selectedLanguage?.toLowerCase()] || 'en-US';
-                
-                let sttModel = undefined;
-                if (sttLanguage === 'en-US' || sttLanguage === 'en-IN') {
-                    sttModel = process.env.DEEPGRAM_MODEL || 'nova-2-phonecall';
-                } else if (sttLanguage === 'hi') {
-                    sttModel = 'nova-2';
-                }
-                
-                const connectionConfig = {
-                  language: sttLanguage,
-                  smart_format: true,
-                  interim_results: true,
-                  endpointing: 300,
-                  utterance_end_ms: '1000',
-                  encoding: 'mulaw',
-                  sample_rate: 8000,
-                  channels: 1,
-                  punctuate: true,
-                  keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2']
-                };
-                if (sttModel) {
-                  connectionConfig.model = sttModel;
-                }
-
-                await deepgramService.createLiveConnection(connectionConfig);
-                
-                // Signal to frontend that the sandbox is fully ready
-                if (isBrowserSandbox && ws.readyState === ws.OPEN) {
-                  ws.send(JSON.stringify({ event: 'ready' }));
-                }
-
                 // Initialize buffered transcript array
                 sessionData.bufferedTranscript = [];
 
                 // Handle Deepgram transcripts
                 deepgramService.on('partialTranscript', async (data) => {
                   try {
-                    sessionData.partialTranscripts.push(data);
-                    sessionData.currentUtterance = data.text;
-                    sessionData.lastTranscriptTime = Date.now();
+                    sessionData.lastPartialAt = performance.now();
 
                     // Barge-in logic
                     if (data.text.trim().length > 1) {
@@ -369,6 +410,9 @@ export function setupMediaStreamWebSocket(server = null) {
                         }
                         if (sessionData.callHandler) {
                           sessionData.callHandler.state = 'IDLE';
+                          // The interrupted turn's speculation answers a question
+                          // the user abandoned mid-sentence.
+                          sessionData.callHandler._abortSpeculation();
                         }
                         
                         // Clear debouncer state to avoid cross-talk processing
@@ -377,11 +421,24 @@ export function setupMediaStreamWebSocket(server = null) {
                           clearTimeout(sessionData.silenceTimeout);
                           sessionData.silenceTimeout = null;
                         }
+                        // The interrupted turn's timing is meaningless; let the
+                        // next one measure from its own start.
+                        sessionData.turnStartedAt = null;
+                        sessionData.firstAudioSent = false;
+                        if (sessionData.aiPartialTimer) {
+                          clearTimeout(sessionData.aiPartialTimer);
+                          sessionData.aiPartialTimer = null;
+                        }
+                        sessionData.aiPartialText = '';
                       }
                     }
 
                     if (sessionData.callHandler) {
-                      await sessionData.callHandler.processPartialTranscript(data.text, data.confidence);
+                      // Start generating a reply now, against the interim text.
+                      // Deepgram spends roughly 460ms deciding the speaker has
+                      // stopped; this puts the LLM to work inside that window.
+                      // Nothing is spoken unless the final transcript confirms it.
+                      sessionData.callHandler.speculate(data.text, data.confidence);
                       broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: data.text, isFinal: false });
                     }
                   } catch (err) {
@@ -395,12 +452,29 @@ export function setupMediaStreamWebSocket(server = null) {
 
                   logger.debug(`Stream Segment Received: "${cleanedText}" (${(data.confidence * 100).toFixed(0)}%)`);
                   sessionData.bufferedTranscript.push(data);
+                  if (sessionData.lastPartialAt !== null) {
+                    // Gap between the last interim result and this final. This
+                    // spans the tail of the user's speech plus Deepgram's
+                    // endpointing decision, so it is legitimately larger than
+                    // turn.mouth_to_ear -- it is not a stage we control. Named
+                    // for what it measures; it used to be called stt.finalize,
+                    // which read as though it were our own latency.
+                    record('stt.last_partial_to_final', performance.now() - sessionData.lastPartialAt);
+                    sessionData.lastPartialAt = null;
+                  }
 
-                  // Reset turns with a 650ms debouncer to let the user complete their thoughts naturally
                   if (sessionData.silenceTimeout) {
                     clearTimeout(sessionData.silenceTimeout);
                     sessionData.silenceTimeout = null;
                   }
+
+                  // Deepgram sets speech_final when its own endpointer has
+                  // decided the speaker is done. When we have that, waiting out
+                  // a debounce on top adds delay for no information: the whole
+                  // point of the debounce is to bridge segments that arrive
+                  // while the user is still talking (is_final without
+                  // speech_final), which is where it still applies.
+                  const debounceMs = data.speechFinal ? 0 : TURN_DEBOUNCE_MS;
 
                   sessionData.silenceTimeout = setTimeout(async () => {
                     if (sessionData.bufferedTranscript.length === 0) return;
@@ -410,6 +484,11 @@ export function setupMediaStreamWebSocket(server = null) {
 
                     // Clear the buffer for the next turn
                     sessionData.bufferedTranscript = [];
+
+                    // The turn clock starts here: the user is done speaking and
+                    // everything after this is our latency to answer.
+                    sessionData.turnStartedAt = performance.now();
+                    sessionData.firstAudioSent = false;
 
                     logger.info(`[DEBOUNCER] Turn completed. Processing user utterance: "${fullUtterance}"`);
 
@@ -427,12 +506,24 @@ export function setupMediaStreamWebSocket(server = null) {
                         }
                       }
                     }
-                  }, 250);
+                  }, debounceMs);
                 });
 
                 deepgramService.on('error', (error) => {
                   logger.error(`Media Stream Deepgram error for call ${callSid}`, error);
                 });
+
+                // Every handler is attached, so it is now safe to let the socket
+                // open and start delivering transcripts. Awaiting here rather
+                // than earlier also means the handshake overlapped all of the
+                // handler and TTS setup above.
+                await deepgramReady;
+
+                // Signal to frontend that the sandbox is fully ready
+                if (isBrowserSandbox && ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ event: 'ready' }));
+                  record('session.cold_start', performance.now() - connectedAt);
+                }
 
                 // Store session
                 activeSessions.set(callSid, {
@@ -450,19 +541,44 @@ export function setupMediaStreamWebSocket(server = null) {
                 //   logger.error('Failed to send initial greeting', introErr);
                 // }
               } else {
-                logger.error(`Critical Error: Call record not found for SID ${callSid} after multiple retries.`);
+                logger.error(`Critical Error: Call record not found for SID ${callSid}.`);
+                // Tell the client. Without this the sandbox modal sits on
+                // "Setting up the sandbox" forever -- which is exactly what
+                // happens when the database is unreachable, because connectDB
+                // swallows its own connection error and the server boots anyway.
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({
+                    event: 'error',
+                    message: 'Could not find the session record. Please try again.'
+                  }));
+                }
               }
             } catch (err) {
               logger.error('Failed to init Media Stream Session', err);
+              if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({
+                  event: 'error',
+                  message: 'The voice pipeline failed to start. Please try again.'
+                }));
+              }
             }
 
             break;
 
           case 'media':
-            // Forward audio to Deepgram
-            if (deepgramService && deepgramService.isActive()) {
-              const audioPayload = Buffer.from(msg.media.payload, 'base64');
-              deepgramService.sendAudio(audioPayload);
+            // Twilio's base64-in-JSON envelope.
+            if (deepgramService) {
+              deepgramService.sendAudio(Buffer.from(msg.media.payload, 'base64'));
+            }
+            break;
+
+          case 'client_metrics':
+            // Client-side timings, sent once at session end rather than per
+            // frame so measuring does not load the path being measured.
+            if (msg.metrics && typeof msg.metrics === 'object') {
+              for (const [name, value] of Object.entries(msg.metrics)) {
+                record(`client.${name}`, value);
+              }
             }
             break;
 
@@ -497,6 +613,20 @@ export function setupMediaStreamWebSocket(server = null) {
         if (deepgramService) {
           deepgramService.close();
         }
+        if (sessionData.tts) {
+          sessionData.tts.clear();
+          if (typeof sessionData.tts.close === 'function') sessionData.tts.close();
+        }
+        // Cancel the sandbox time-limit timers so a closed session can't emit.
+        if (sessionData.callHandler) sessionData.callHandler.dispose();
+        if (sessionData.aiPartialTimer) {
+          clearTimeout(sessionData.aiPartialTimer);
+          sessionData.aiPartialTimer = null;
+        }
+        if (sessionData.silenceTimeout) {
+          clearTimeout(sessionData.silenceTimeout);
+          sessionData.silenceTimeout = null;
+        }
 
         if (callSid) {
           // Just in case 'stop' wasn't sent
@@ -525,63 +655,3 @@ export function getStreamingSession(callSid) {
   return activeSessions.get(callSid);
 }
 
-/**
- * Handle manual intervention from the LiveCall dashboard
- */
-export const handleManualIntervention = async (callId, text) => {
-  try {
-    // We need to find the session by callId (dashboard uses mongo ID)
-    // but activeSessions is keyed by TWILIO call SID.
-    // Let's iterate or find the call first.
-    const call = await Call.findById(callId);
-    if (!call) {
-      logger.error(`Manual intervention failed: Call ${callId} not found in DB`);
-      return;
-    }
-
-    const session = activeSessions.get(call.twilioCallSid);
-    if (!session) {
-      logger.warn(`Manual intervention skip: Call ${call.twilioCallSid} is not active in media stream`);
-      return;
-    }
-
-    const { ws, streamSid, sessionData } = session;
-
-    logger.info(`EXECUTIVE INTERVENTION for Call ${call.twilioCallSid}: "${text}"`);
-
-    // 1. Barge-in: Clear current AI audio
-    if (ws.readyState === 1 && streamSid) {
-      ws.send(JSON.stringify({ event: 'clear', streamSid }));
-    }
-
-    if (sessionData.tts) {
-      sessionData.tts.audioQueue = [];
-      sessionData.tts.textBuffer = '';
-    }
-
-    // 2. AI Context Injection: Update brain memory
-    if (sessionData.callHandler) {
-      sessionData.callHandler.chatHistory += `\nAI (Admin Intervention): ${text}`;
-      sessionData.callHandler.state = 'IDLE'; // Stop AI from thinking/speaking
-    }
-
-    // 3. Play Human Audio
-    if (sessionData.tts) {
-        sessionData.tts.processTextChunk(text);
-        sessionData.tts.flush();
-    }
-
-    // 4. Update Dashboard Transcript Bubble
-    broadcastTranscriptUpdate(callId.toString(), { 
-        source: 'ai', // Mark as AI but the UI will style it as intervention
-        text: text, 
-        isFinal: true,
-        type: 'intervention' // Add a type hint for the frontend
-    });
-
-  } catch (err) {
-    logger.error('Error in handleManualIntervention:', err);
-  }
-};
-
-export default router;

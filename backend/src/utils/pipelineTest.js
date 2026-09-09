@@ -1,6 +1,10 @@
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
+import { snapshot } from './latencyMetrics.js';
+
+// Below this, the p50 is too noisy to quote as a real number.
+const MIN_SAMPLES_FOR_MEASURED = 5;
 
 /**
  * Perform a real-time network latency test to a provider's domain.
@@ -51,9 +55,39 @@ const PROVIDER_DOMAINS = {
 };
 
 /**
- * Tests the real-time latency for the selected pipeline.
+ * Latency figure for a pipeline configuration.
+ *
+ * Prefers what the pipeline has actually done: the measured p50 of
+ * `turn.mouth_to_ear` from real sessions. Falls back to a provider-ping estimate
+ * only when no turns have been recorded yet.
+ *
+ * The previous version always returned the estimate -- provider ping RTTs summed
+ * with a hardcoded per-model table times a magic 0.6 -- and reported it to users
+ * as `actualLatency`, which measured nothing about the pipeline at all.
+ *
+ * @returns {Promise<{latencyMs: number, source: 'measured'|'estimated', samples: number}>}
  */
 export const testPipelineLatency = async (pipelineConfig, optionsList) => {
+  const measured = snapshot('turn.mouth_to_ear');
+  if (measured && measured.count >= MIN_SAMPLES_FOR_MEASURED) {
+    return {
+      latencyMs: Math.round(measured.p50),
+      source: 'measured',
+      samples: measured.count,
+      percentiles: {
+        p50: measured.p50,
+        p95: measured.p95,
+        p99: measured.p99,
+      },
+    };
+  }
+
+  const estimate = await estimatePipelineLatency(pipelineConfig, optionsList);
+  return { latencyMs: estimate, source: 'estimated', samples: measured?.count ?? 0 };
+};
+
+/** Ping-plus-table estimate. Only used before any real turn has been measured. */
+const estimatePipelineLatency = async (pipelineConfig, optionsList) => {
   const { sttModel, llmModel, ttsModel } = pipelineConfig;
   
   // Find the selected models from the static options

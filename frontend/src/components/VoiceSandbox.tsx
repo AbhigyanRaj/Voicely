@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Mic, MicOff, Square, Loader2, Shield, AlertCircle, Sparkles, ChevronDown, Lock, Check } from "lucide-react";
+import { X, Mic, MicOff, Square, Loader2, Shield, AlertCircle, ChevronDown, Check } from "lucide-react";
 import { getUserModules, getStoredToken } from "../lib/auth";
 import type { VoiceModule } from "../lib/auth";
-import { getApiBaseUrl } from "../lib/api";
+import { getApiBaseUrl, getWsBaseUrl } from "../lib/api";
+import { decodeAudioPayload } from "../lib/audioUtils";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import {
-  SARVAM_LANGUAGES,
-  SARVAM_VOICES,
-  CARTESIA_LANGUAGES,
-  CARTESIA_VOICES
-} from "../lib/ttsConfig";
+import { CARTESIA_VOICES, DEFAULT_VOICE_ID, DEFAULT_LANGUAGE, TTS_PROVIDER } from "../lib/ttsConfig";
 
 export const DEMO_AGENTS = [
   {
@@ -47,19 +43,8 @@ export const DEMO_AGENTS = [
   }
 ];
 
-const AGENT_COLORS: Record<string, string> = {
-  emerald: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400',
-  blue:    'border-blue-500/30 bg-blue-500/5 text-blue-400',
-  violet:  'border-violet-500/30 bg-violet-500/5 text-violet-400',
-  rose:    'border-rose-500/30 bg-rose-500/5 text-rose-400',
-};
-
-const AGENT_DOT: Record<string, string> = {
-  emerald: 'bg-emerald-500',
-  blue:    'bg-blue-500',
-  violet:  'bg-violet-500',
-  rose:    'bg-rose-500',
-};
+/** Guest sessions are capped server-side too; this is the display countdown. */
+const SANDBOX_SECONDS = 60;
 
 interface VoiceSandboxProps {
   open: boolean;
@@ -72,6 +57,16 @@ interface TranscriptLine {
   isFinal: boolean;
 }
 
+/**
+ * In-progress capture setup. The context exists immediately; the stream and the
+ * worklet module are still in flight.
+ */
+interface MicCapture {
+  context: AudioContext;
+  stream: Promise<MediaStream>;
+  worklet: Promise<void>;
+}
+
 export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -82,43 +77,34 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const [customerName, setCustomerName] = useState<string>("Steve");
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
   const [submittingCall, setSubmittingCall] = useState<boolean>(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
-  const [selectedVoice, setSelectedVoice] = useState<string>("a7a59115-2425-4192-844c-1e98ec7d6877");
-  const [ttsProvider, setTtsProvider] = useState<string>("cartesia");
-  const [optimizeFor, setOptimizeFor] = useState<'latency' | 'quality'>('latency');
+  const [selectedVoice, setSelectedVoice] = useState<string>(DEFAULT_VOICE_ID);
+  // Provider and language are fixed: Cartesia, English.
+  const selectedLanguage = DEFAULT_LANGUAGE;
+  const ttsProvider = TTS_PROVIDER;
+  // No UI control sets this today; it is still sent to the server, where
+  // 'quality' stops the TTS chunker splitting on commas.
+  const [optimizeFor] = useState<'latency' | 'quality'>('latency');
   const [mobileStep, setMobileStep] = useState<1 | 2>(1);
-  const [timeLeft, setTimeLeft] = useState<number>(60);
+  const [timeLeft, setTimeLeft] = useState<number>(SANDBOX_SECONDS);
+  // Surfaced in the panel instead of alert(), which blocks the whole tab.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Custom agents may carry a saved voice; fall back to the default if it is not
+  // one of the voices actually on offer.
   useEffect(() => {
-    if (selectedModuleId) {
-      if (agentSource === 'demo') {
-        setTtsProvider("cartesia");
-        if (selectedLanguage !== 'en-US' && selectedLanguage !== 'hi-IN') {
-          setSelectedLanguage("en-US");
-        }
-      } else if (modules.length > 0) {
-        const activeMod = modules.find(m => (m._id || m.id) === selectedModuleId);
-        if (activeMod) {
-          setTtsProvider(activeMod.ttsProvider || "cartesia");
-          setSelectedLanguage(activeMod.selectedLanguage || "en-US");
-          setSelectedVoice(activeMod.selectedVoice || "a7a59115-2425-4192-844c-1e98ec7d6877");
-        }
-      }
+    if (agentSource === 'custom' && modules.length > 0) {
+      const activeMod = modules.find(m => (m._id || m.id) === selectedModuleId);
+      if (activeMod?.selectedVoice) setSelectedVoice(activeMod.selectedVoice);
     }
   }, [selectedModuleId, modules, agentSource]);
 
   useEffect(() => {
-    let availableVoices = agentSource === 'demo'
-      ? (selectedLanguage === 'hi-IN' ? SARVAM_VOICES['hi-IN'] : CARTESIA_VOICES['en-US']) || []
-      : (ttsProvider === 'cartesia' ? CARTESIA_VOICES : SARVAM_VOICES)[selectedLanguage] || [];
-      
-    if (availableVoices.length > 0) {
-      const match = availableVoices.find(v => v.id === selectedVoice);
-      if (!match) setSelectedVoice(availableVoices[0].id);
+    const available = CARTESIA_VOICES[DEFAULT_LANGUAGE] || [];
+    if (!available.some(v => v.id === selectedVoice)) {
+      setSelectedVoice(available[0]?.id ?? DEFAULT_VOICE_ID);
     }
-  }, [selectedLanguage, ttsProvider, agentSource]);
+  }, [selectedVoice]);
 
-  const [callRecord, setCallRecord] = useState<any>(null);
   const [finalizedTranscripts, setFinalizedTranscripts] = useState<TranscriptLine[]>([]);
   const [activePartials, setActivePartials] = useState<Record<string, TranscriptLine>>({});
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -133,9 +119,29 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   const nextStartTimeRef = useRef<number>(0);
   const activeAudioNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-  const pollingIntervalRef = useRef<any>(null);
   const isMutedRef = useRef(isMuted);
 
+  // Mic capture is started in parallel with session setup, so it has to be
+  // awaited before the audio graph can be wired to the socket.
+  const micWarmupRef = useRef<MicCapture | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+
+  // Client-side latency samples, reported once at session end. Both ends of the
+  // pipeline are invisible to the server, so without these the recorded budget
+  // is missing the capture buffer and the playback jitter buffer.
+  const clientMetricsRef = useRef<Record<string, number[]>>({});
+  const readyAtRef = useRef<number | null>(null);
+  const firstPlayoutRecordedRef = useRef<boolean>(false);
+
+  const recordClientMetric = (name: string, value: number) => {
+    if (!Number.isFinite(value) || value < 0) return;
+    const samples = clientMetricsRef.current[name] || (clientMetricsRef.current[name] = []);
+    // Report the median at the end; a cap keeps this from growing unbounded.
+    if (samples.length < 500) samples.push(value);
+  };
+
+  const openRef = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   useEffect(() => {
@@ -156,77 +162,116 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       setSelectedModuleId('demo-agent-calm');
       setStage('setup');
       setMobileStep(1);
-      setTimeLeft(60);
+      setTimeLeft(SANDBOX_SECONDS);
+      setErrorMessage(null);
       setFinalizedTranscripts([]);
       setActivePartials({});
-      setCallRecord(null);
-    }
+      }
   }, [open]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [finalizedTranscripts, activePartials]);
 
+  // `timeLeft` deliberately stays out of the dependency list: including it tore
+  // down and recreated this interval on every single tick.
   useEffect(() => {
-    let interval: any;
-    if (stage === 'connected' && timeLeft > 0) {
-      interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-    }
+    if (stage !== 'connected') return;
+    const interval = setInterval(() => {
+      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
     return () => clearInterval(interval);
+  }, [stage]);
+
+  // The countdown used to just sit at 00:00 with the session still live.
+  useEffect(() => {
+    if (stage === 'connected' && timeLeft === 0) {
+      setErrorMessage("Your 60-second sandbox session has ended. Sign in for longer sessions.");
+      handleEndSandboxCall();
+    }
   }, [stage, timeLeft]);
 
   useEffect(() => { return () => cleanupSession(); }, []);
 
   const cleanupSession = () => {
+    // Hand the client-side timings over before the socket goes away.
+    reportClientMetrics();
+
     if (streamWsRef.current) { streamWsRef.current.close(); streamWsRef.current = null; }
     if (liveCallWsRef.current) { liveCallWsRef.current.close(); liveCallWsRef.current = null; }
+    if (workletNodeRef.current) { workletNodeRef.current.port.onmessage = null; workletNodeRef.current.disconnect(); workletNodeRef.current = null; }
     if (processorNodeRef.current) { processorNodeRef.current.disconnect(); processorNodeRef.current = null; }
     if (sourceNodeRef.current) { sourceNodeRef.current.disconnect(); sourceNodeRef.current = null; }
     if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
     if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-    if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+
+    // A capture still in flight would otherwise leave the mic open forever:
+    // the permission prompt can resolve long after the user gave up.
+    if (micWarmupRef.current) {
+      const pending = micWarmupRef.current;
+      micWarmupRef.current = null;
+      pending.stream
+        .then(stream => stream.getTracks().forEach(t => t.stop()))
+        .catch(() => {});
+      pending.context.close().catch(() => {});
+    }
+
+    activeAudioNodesRef.current = [];
+    nextStartTimeRef.current = 0;
+    readyAtRef.current = null;
+    firstPlayoutRecordedRef.current = false;
   };
 
-  const muLawToLinear = (b: number) => {
-    b = ~b;
-    const sign = b & 0x80 ? -1 : 1;
-    const exp = (b >> 4) & 0x07;
-    const mantissa = b & 0x0f;
-    let s = ((mantissa << 3) + 132) << exp;
-    s -= 132;
-    return (sign * s) / 32768.0;
+  /** Median of each client metric, posted to the server in one message. */
+  const reportClientMetrics = () => {
+    const ws = streamWsRef.current;
+    const samples = clientMetricsRef.current;
+    clientMetricsRef.current = {};
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const metrics: Record<string, number> = {};
+    for (const [name, values] of Object.entries(samples)) {
+      if (values.length === 0) continue;
+      const sorted = [...values].sort((a, b) => a - b);
+      metrics[name] = sorted[Math.floor(sorted.length / 2)];
+    }
+    if (Object.keys(metrics).length === 0) return;
+
+    try {
+      ws.send(JSON.stringify({ event: 'client_metrics', metrics }));
+    } catch {
+      // The socket closed under us; these are diagnostics, so drop them.
+    }
   };
 
-  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-    let binary = "";
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    return window.btoa(binary);
-  };
+  // Jitter buffer ahead of the first chunk of an utterance. 20ms rather than
+  // 50ms, which is safe now that mic frames are ~20ms instead of 256ms.
+  const PLAYOUT_LEAD_SECONDS = 0.02;
 
   const playAudioChunk = (base64Payload: string, encoding = 'mulaw', sampleRate = 8000) => {
     const ac = audioContextRef.current;
     if (!ac) return;
-    const binary = window.atob(base64Payload);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    let float32Data: Float32Array;
-    if (encoding === 'pcm_f32le') {
-      const view = new Float32Array(bytes.buffer);
-      float32Data = new Float32Array(view.length);
-      for (let i = 0; i < view.length; i++) float32Data[i] = view[i];
-    } else {
-      float32Data = new Float32Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) float32Data[i] = muLawToLinear(bytes[i]);
-    }
+
+    const float32Data = decodeAudioPayload(base64Payload, encoding);
+    if (float32Data.length === 0) return;
+
     if (ac.state === "suspended") ac.resume();
     const buf = ac.createBuffer(1, float32Data.length, sampleRate);
     buf.getChannelData(0).set(float32Data);
     const source = ac.createBufferSource();
     source.buffer = buf;
     source.connect(ac.destination);
+
     const now = ac.currentTime;
-    if (nextStartTimeRef.current < now) nextStartTimeRef.current = now + 0.05;
+    if (nextStartTimeRef.current < now) nextStartTimeRef.current = now + PLAYOUT_LEAD_SECONDS;
+
+    // How far ahead of the clock we are scheduling: the real jitter-buffer depth.
+    recordClientMetric('playout_depth_ms', (nextStartTimeRef.current - now) * 1000);
+    if (!firstPlayoutRecordedRef.current && readyAtRef.current !== null) {
+      firstPlayoutRecordedRef.current = true;
+      recordClientMetric('ready_to_first_playout_ms', performance.now() - readyAtRef.current);
+    }
+
     setIsAgentSpeaking(true);
     activeAudioNodesRef.current.push(source);
     source.onended = () => {
@@ -237,39 +282,133 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
     nextStartTimeRef.current += buf.duration;
   };
 
-  const startAudioStreaming = async (callSid: string) => {
+  /**
+   * Begin capture setup without blocking on it.
+   *
+   * The AudioContext is created synchronously, so its sample rate -- which the
+   * server needs in order to configure STT -- is known immediately. Only
+   * getUserMedia needs the permission prompt, and that is left as a promise the
+   * caller awaits later, so session setup and the permission dialog overlap
+   * instead of running one after the other.
+   *
+   * Previously all of this ran only after the server said `ready`, which put the
+   * permission prompt -- often the longest single item in a cold start -- dead
+   * last, behind an already-billing Deepgram socket.
+   */
+  const beginCapture = (): MicCapture => {
+    // No sampleRate override: the context runs at the hardware's native rate, so
+    // the browser does no resampling. Pinning it to 8000 forced telephony-grade
+    // audio on the demo and is outright rejected by Safari and Firefox.
+    const context: AudioContext = new (window.AudioContext ||
+      (window as any).webkitAudioContext)({ latencyHint: 'interactive' });
+
+    const stream = navigator.mediaDevices.getUserMedia({
+      audio: {
+        // The mic chain is connected to the speakers, so without these the
+        // agent's own voice can trip the barge-in detector and cost a full turn.
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+
+    // Fetched in parallel with the permission prompt.
+    const worklet = context.audioWorklet.addModule('/audio-processor.js');
+
+    return { context, stream, worklet };
+  };
+
+  /** Wire a warmed-up capture chain to the already-open socket. */
+  const attachAudioStreaming = async () => {
     try {
-      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 8000 });
-      const ac = audioContextRef.current;
-      sourceNodeRef.current = ac.createMediaStreamSource(mediaStreamRef.current);
-      await ac.audioWorklet.addModule('/audio-processor.js');
-      processorNodeRef.current = new AudioWorkletNode(ac, 'audio-processor');
-      processorNodeRef.current.port.onmessage = (e: MessageEvent) => {
+      const capture = micWarmupRef.current;
+      if (!capture) return;
+      const { context } = capture;
+      const [stream] = await Promise.all([capture.stream, capture.worklet]);
+      micWarmupRef.current = null;
+
+      // The user may have closed the modal while the prompt was up.
+      if (!openRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        context.close().catch(() => {});
+        return;
+      }
+
+      mediaStreamRef.current = stream;
+      audioContextRef.current = context;
+      if (context.state === 'suspended') await context.resume();
+
+      const sourceNode = context.createMediaStreamSource(stream);
+      sourceNodeRef.current = sourceNode;
+
+      const worklet = new AudioWorkletNode(context, 'audio-processor');
+      workletNodeRef.current = worklet;
+      processorNodeRef.current = worklet;
+
+      worklet.port.onmessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (!data || data.type !== 'audio') return;
         if (isMutedRef.current) return;
         const ws = streamWsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ event: 'media', media: { payload: arrayBufferToBase64(e.data.buffer) } }));
+
+        // Raw binary. The base64-in-JSON envelope this used to build is Twilio's
+        // protocol, and the browser is not Twilio: it cost 36% more bytes plus a
+        // per-byte string concat on the main thread for every frame.
+        ws.send(data.buffer);
+
+        if (typeof data.capturedAt === 'number') {
+          // Time from the end of the captured frame to it hitting the socket.
+          recordClientMetric(
+            'capture_to_send_ms',
+            Math.max(0, (context.currentTime - data.capturedAt) * 1000)
+          );
+        }
       };
-      sourceNodeRef.current.connect(processorNodeRef.current);
-      processorNodeRef.current.connect(ac.destination);
+
+      sourceNode.connect(worklet);
+      // Keeps the worklet pulled by the graph. It writes nothing to its outputs,
+      // so this is silent.
+      worklet.connect(context.destination);
     } catch (err) {
       console.error("Mic capture failed:", err);
-      alert("Failed to access microphone. Allow microphone permissions and reload.");
+      setErrorMessage("Couldn't access your microphone. Allow mic permissions and try again.");
       setStage('setup');
+      cleanupSession();
     }
   };
 
   const handleStartSandbox = async () => {
     if (!selectedModuleId || !customerName.trim()) {
-      alert("Please choose a voice agent and enter your name.");
+      setErrorMessage("Please choose a voice agent and enter your name.");
       return;
     }
     setSubmittingCall(true);
     setStage('connecting');
+    setErrorMessage(null);
     setFinalizedTranscripts([]);
     setActivePartials({});
-    setCallRecord(null);
+    clientMetricsRef.current = {};
+    firstPlayoutRecordedRef.current = false;
+
+    // Kick the mic permission prompt and the worklet fetch off now, so they
+    // overlap the HTTP round trip and the WebSocket handshake instead of waiting
+    // for the server to say `ready`. Rejections are handled where they are
+    // awaited, in attachAudioStreaming.
+    let capture: MicCapture | null = null;
+    try {
+      capture = beginCapture();
+      micWarmupRef.current = capture;
+      capture.stream.catch(() => {});
+      capture.worklet.catch(() => {});
+    } catch (err) {
+      console.error('Could not create an audio context:', err);
+      setErrorMessage("Your browser blocked audio playback. Try a different browser.");
+      setStage('setup');
+      setSubmittingCall(false);
+      return;
+    }
+
     const token = getStoredToken();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -278,27 +417,35 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         method: "POST", headers,
         body: JSON.stringify({ moduleId: selectedModuleId, customerName: customerName.trim(), selectedVoice, selectedLanguage, ttsProvider, optimizeFor })
       });
-      if (!response.ok) throw new Error("Failed to register sandbox call");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.message || detail.error || `Server returned ${response.status}`);
+      }
       const resData = await response.json();
       const call = resData.call;
-      setCallRecord(call);
-      let streamWsUrl = "", liveCallWsUrl = "";
-      const wsUrlConfig = import.meta.env.VITE_WS_URL;
-      if (wsUrlConfig) {
-        streamWsUrl = `${wsUrlConfig}/api/streams/browser`;
-        liveCallWsUrl = `${wsUrlConfig}/live-call?callId=${call._id}`;
-      } else {
-        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host.includes(':') ? 'localhost:5001' : window.location.host;
-        streamWsUrl = `${proto}//${host}/api/streams/browser`;
-        liveCallWsUrl = `${proto}//${host}/live-call?callId=${call._id}`;
-      }
-      const tok = localStorage.getItem('vokai_jwt_token') || getStoredToken();
+
+      // One source of truth for the WS host. The old inline version rewrote any
+      // host carrying a port to `localhost:5001` -- so a preview build on :4173,
+      // or any deployment on an explicit port, pointed at the developer's laptop.
+      const wsBase = getWsBaseUrl();
+
+      // Read straight off the context. Awaiting the mic promise here would put
+      // the permission prompt back on the critical path -- and if getUserMedia
+      // never settles, the socket would never open at all.
+      const captureRate = capture.context.sampleRate;
+
+      const streamParams = new URLSearchParams({ sampleRate: String(captureRate) });
+      const liveCallParams = new URLSearchParams({ callId: call._id });
+      const tok = getStoredToken();
       if (tok) {
-        streamWsUrl += `?token=${tok}`;
-        liveCallWsUrl += `&token=${tok}`;
+        streamParams.set('token', tok);
+        liveCallParams.set('token', tok);
       }
+      const streamWsUrl = `${wsBase}/api/streams/browser?${streamParams}`;
+      const liveCallWsUrl = `${wsBase}/live-call?${liveCallParams}`;
+
       const streamWs = new WebSocket(streamWsUrl);
+      streamWs.binaryType = 'arraybuffer';
       streamWsRef.current = streamWs;
       streamWs.onopen = () => {
         streamWs.send(JSON.stringify({ event: "start", start: { callSid: call.twilioCallSid, streamSid: "browser_stream_" + Date.now() } }));
@@ -307,16 +454,27 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
         try {
           const msg = JSON.parse(event.data);
           if (msg.event === 'ready') {
+            readyAtRef.current = performance.now();
             setStage('connected');
-            setTimeLeft(60);
-            startAudioStreaming(call.twilioCallSid);
+            setTimeLeft(SANDBOX_SECONDS);
+            attachAudioStreaming();
           } else if (msg.event === "media") {
             playAudioChunk(msg.media.payload, msg.media.encoding, msg.media.sampleRate);
           } else if (msg.event === "clear") {
-            activeAudioNodesRef.current.forEach(n => { try { n.stop(); } catch(e) {} });
+            activeAudioNodesRef.current.forEach(n => { try { n.stop(); } catch { /* already stopped */ } });
             activeAudioNodesRef.current = [];
-            nextStartTimeRef.current = 0;
+            // Reset to the clock, not to zero: zero is in the past, so the very
+            // next chunk was always scheduled late by the lead time.
+            const ac = audioContextRef.current;
+            nextStartTimeRef.current = ac ? ac.currentTime : 0;
             setIsAgentSpeaking(false);
+          } else if (msg.event === "error") {
+            // Previously the server logged init failures and told the client
+            // nothing, so the modal sat on "Setting up the sandbox" forever.
+            console.error("Pipeline error:", msg.message);
+            setErrorMessage(msg.message || "The voice pipeline failed to start.");
+            setStage('setup');
+            cleanupSession();
           } else if (msg.event === "end") {
             handleEndSandboxCall();
           }
@@ -324,6 +482,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
       };
       streamWs.onclose = () => stopAudioStreaming();
       streamWs.onerror = (e) => console.error("Stream socket error:", e);
+
       const liveCallWs = new WebSocket(liveCallWsUrl);
       liveCallWsRef.current = liveCallWs;
       liveCallWs.onmessage = (event) => {
@@ -335,21 +494,31 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
               setFinalizedTranscripts(prev => [...prev, { source, text, isFinal: true }]);
               setActivePartials(prev => { const n = { ...prev }; delete n[source]; return n; });
             } else {
+              // Server-side partials are cumulative: STT resends the whole
+              // utterance so far, and the AI stream is now coalesced into the
+              // sentence so far rather than one token per message. Replacing is
+              // therefore correct -- appending here would duplicate the text.
               setActivePartials(prev => ({ ...prev, [source]: { source, text, isFinal: false } }));
             }
           }
         } catch (err) { console.error("Transcript error:", err); }
       };
+      // This socket had no error or close handler at all, so a dropped
+      // transcript feed was invisible.
+      liveCallWs.onerror = (e) => console.error("Transcript socket error:", e);
+      liveCallWs.onclose = () => { liveCallWsRef.current = null; };
     } catch (err: any) {
       console.error("Sandbox init error:", err);
-      alert("Failed to start Sandbox: " + err.message);
+      setErrorMessage(err?.message ? `Couldn't start the sandbox: ${err.message}` : "Couldn't start the sandbox.");
       setStage('setup');
+      cleanupSession();
     } finally {
       setSubmittingCall(false);
     }
   };
 
   const stopAudioStreaming = () => {
+    if (workletNodeRef.current) { workletNodeRef.current.port.onmessage = null; workletNodeRef.current.disconnect(); workletNodeRef.current = null; }
     if (processorNodeRef.current) { processorNodeRef.current.disconnect(); processorNodeRef.current = null; }
     if (sourceNodeRef.current) { sourceNodeRef.current.disconnect(); sourceNodeRef.current = null; }
     if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
@@ -357,9 +526,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   };
 
   const handleEndSandboxCall = async () => {
-    if (!callRecord) return;
+    // No `if (!callRecord) return` guard: that early return meant closing during
+    // 'connecting' never reached cleanupSession(), leaving the mic live and both
+    // sockets open.
     setStage('setup');
     if (streamWsRef.current && streamWsRef.current.readyState === WebSocket.OPEN) {
+      // Hand over the client-side timings before asking the server to wrap up.
+      reportClientMetrics();
       streamWsRef.current.send(JSON.stringify({ event: 'stop' }));
     }
     cleanupSession();
@@ -381,16 +554,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
   if (!open) return null;
 
   const currentDemoAgent = DEMO_AGENTS.find(d => d.id === selectedModuleId);
-  const languages = agentSource === 'demo'
-    ? [
-        { code: 'en-US', label: 'English' },
-        { code: 'hi-IN', label: 'Hindi' }
-      ]
-    : (ttsProvider === 'cartesia' ? CARTESIA_LANGUAGES : SARVAM_LANGUAGES);
-
-  const voices = agentSource === 'demo'
-    ? (selectedLanguage === 'hi-IN' ? SARVAM_VOICES['hi-IN'] : CARTESIA_VOICES['en-US']) || []
-    : (ttsProvider === 'cartesia' ? CARTESIA_VOICES : SARVAM_VOICES)[selectedLanguage] || [];
+  const voices = CARTESIA_VOICES[DEFAULT_LANGUAGE] || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -495,7 +659,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           <p className="text-[13px] text-zinc-900 font-semibold">No agent yet</p>
                           <p className="text-[11px] text-zinc-500">Create one in the dashboard. Test it here.</p>
                         </div>
-                        <button onClick={() => { onClose(); navigate('/create-module'); }} className="px-4 py-2 bg-[#0044FF] hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-all mt-2">
+                        <button onClick={() => { onClose(); navigate('/modules'); }} className="px-4 py-2 bg-[#0044FF] hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-all mt-2">
                           Agent Builder
                         </button>
                       </div>
@@ -508,7 +672,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                           <p className="text-[13px] text-zinc-900 font-semibold">No custom agents found</p>
                           <p className="text-[11px] text-zinc-500">You haven't built any agents yet.</p>
                         </div>
-                        <button onClick={() => { onClose(); navigate('/create-module'); }} className="px-4 py-2 bg-[#0044FF] hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-all mt-2">
+                        <button onClick={() => { onClose(); navigate('/modules'); }} className="px-4 py-2 bg-[#0044FF] hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-all mt-2">
                           Agent Builder
                         </button>
                       </div>
@@ -557,6 +721,13 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                 </button>
                 <h3 className="text-[15px] font-bold text-zinc-900 mb-1 tracking-tight">Simulation Parameters</h3>
                 <p className="text-zinc-500 text-[11px] mb-8">Configure the environment for your test call.</p>
+
+                {errorMessage && (
+                  <div className="mb-6 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <p className="text-[11px] font-medium leading-relaxed text-amber-800">{errorMessage}</p>
+                  </div>
+                )}
                 
                 <div className="space-y-6">
                   {/* Row 1: Name */}
@@ -571,26 +742,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
                     />
                   </div>
 
-                  {/* Row 2: Language & Voice */}
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">Language</label>
-                    <div className="relative">
-                      <select
-                        value={selectedLanguage}
-                        onChange={e => setSelectedLanguage(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-900 text-[13px] font-medium appearance-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer shadow-sm"
-                      >
-                        {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
-                    </div>
-                    {agentSource === 'demo' && selectedLanguage.includes('hi') && (
-                      <p className="text-[10px] text-amber-600 mt-1.5 italic font-medium">
-                        Hindi demo coming soon. Available for custom agents.
-                      </p>
-                    )}
-                  </div>
-
+                  {/* Voice. Language is not a choice: the pipeline is English only. */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">Voice</label>
                     <div className="relative">
@@ -610,7 +762,7 @@ export const VoiceSandbox: React.FC<VoiceSandboxProps> = ({ open, onClose }) => 
               <div className="mt-auto pt-8 relative z-10">
                 <button
                   onClick={handleStartSandbox}
-                  disabled={!selectedModuleId || submittingCall || (agentSource === 'custom' && !user) || (agentSource === 'demo' && selectedLanguage.includes('hi'))}
+                  disabled={!selectedModuleId || submittingCall || (agentSource === 'custom' && !user)}
                   className="w-full h-10 bg-[#0044FF] hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-[#0044FF] disabled:cursor-not-allowed text-white text-[11px] font-bold uppercase tracking-widest rounded-lg shadow-[0_4px_14px_0_rgba(0,118,255,0.39)] transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
                   {submittingCall && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
