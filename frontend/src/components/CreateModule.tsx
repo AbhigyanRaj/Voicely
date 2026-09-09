@@ -25,7 +25,7 @@ const personaSchema = z.object({
   questions: z.array(z.string()).refine(arr => arr.some(q => q.trim().length > 0), { message: 'Add at least one question for your agent to ask' })
 });
 
-import { GOOGLE_LANGUAGES, GOOGLE_VOICES, SARVAM_LANGUAGES, SARVAM_VOICES, CARTESIA_LANGUAGES, CARTESIA_VOICES, DEEPGRAM_LANGUAGES, DEEPGRAM_VOICES } from "../lib/ttsConfig";
+import { CARTESIA_VOICES, DEFAULT_VOICE_ID, DEFAULT_LANGUAGE, TTS_PROVIDER } from "../lib/ttsConfig";
 
 interface CreateModuleProps {
   open: boolean;
@@ -45,9 +45,10 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
   const [success, setSuccess] = useState(false);
   const [translating, setTranslating] = useState<number | null>(null);
 
-  const [ttsProvider, setTtsProvider] = useState<"google" | "sarvam" | "cartesia" | "deepgram">("sarvam");
-  const [selectedLanguage, setSelectedLanguage] = useState("hi-IN");
-  const [selectedVoice, setSelectedVoice] = useState("anushka");
+  // Provider and language are fixed: Cartesia, English.
+  const ttsProvider = TTS_PROVIDER;
+  const selectedLanguage = DEFAULT_LANGUAGE;
+  const [selectedVoice, setSelectedVoice] = useState<string>(DEFAULT_VOICE_ID);
 
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
 
@@ -58,25 +59,7 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
     { id: 'recovery', name: 'E-commerce Recovery', icon: <ShieldCheck className="w-4 h-4" />, desc: 'Trust & Friction resolution' }
   ];
 
-  const handleProviderChange = (provider: "google" | "sarvam" | "cartesia" | "deepgram") => {
-    setTtsProvider(provider);
-    if (provider === "google") {
-      setSelectedLanguage("en-IN");
-      setSelectedVoice("NEERJA");
-    } else if (provider === "sarvam") {
-      setSelectedLanguage("hi-IN");
-      setSelectedVoice("anushka");
-    } else if (provider === "cartesia") {
-      setSelectedLanguage("en-US");
-      setSelectedVoice("79a125e8-cd45-4c13-8a67-188112f4dd22");
-    } else if (provider === "deepgram") {
-      setSelectedLanguage("en-US");
-      setSelectedVoice("aura-asteria-en");
-    }
-  };
-
-  const currentLanguages = ttsProvider === "google" ? GOOGLE_LANGUAGES : ttsProvider === "sarvam" ? SARVAM_LANGUAGES : ttsProvider === "cartesia" ? CARTESIA_LANGUAGES : DEEPGRAM_LANGUAGES;
-  const currentVoices = ttsProvider === "google" ? GOOGLE_VOICES[selectedLanguage] || [] : ttsProvider === "sarvam" ? SARVAM_VOICES[selectedLanguage] || [] : ttsProvider === "cartesia" ? CARTESIA_VOICES[selectedLanguage] || [] : DEEPGRAM_VOICES[selectedLanguage] || [];
+  const currentVoices = CARTESIA_VOICES[DEFAULT_LANGUAGE] || [];
 
   const addQuestion = () => setQuestions([...questions, ""]);
   
@@ -118,7 +101,7 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
       return true;
     } catch (e: any) {
       if (e instanceof z.ZodError) {
-        setError(e.errors[0].message);
+        setError(e.issues[0].message);
       }
       return false;
     }
@@ -351,57 +334,21 @@ const CreateModule: React.FC<CreateModuleProps> = ({ open, onClose }) => {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-lg font-bold text-white mb-1">Synthesis Engine</h3>
-                    <p className="text-zinc-400 text-xs">Choose the provider that powers your agent's voice.</p>
+                    <p className="text-zinc-400 text-xs">Cartesia Sonic, the lowest-latency voice in the stack.</p>
                   </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      { id: 'sarvam', label: 'Sarvam AI', desc: 'Premium Regional Dialects', icon: Waves },
-                      { id: 'cartesia', label: 'Cartesia AI', desc: 'Sonic Realism', icon: Waves },
-                      { id: 'deepgram', label: 'Deepgram Aura', desc: 'Fast Conversational', icon: Zap },
-                      { id: 'google', label: 'Google Cloud', desc: 'Standard Voices', icon: Waves },
-                    ].map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleProviderChange(p.id as any)}
-                        className={`flex items-center gap-4 p-3 rounded-md border transition-all duration-300 text-left group ${
-                          ttsProvider === p.id 
-                            ? 'bg-zinc-800 border-zinc-500' 
-                            : 'bg-zinc-900/40 border-white/[0.1] hover:bg-zinc-900/80'
-                        }`}
-                      >
-                        <div className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors flex-shrink-0 ${ttsProvider === p.id ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500'}`}>
-                          <p.icon className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className={`text-[13px] font-medium tracking-wide transition-colors ${ttsProvider === p.id ? 'text-white' : 'text-zinc-300 group-hover:text-white'}`}>{p.label}</p>
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mt-0.5">{p.desc}</p>
-                        </div>
-                      </button>
-                    ))}
+
+                  <div className="flex items-center gap-4 p-3 rounded-md border border-zinc-500 bg-zinc-800">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 bg-white text-black">
+                      <Waves className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium tracking-wide text-white">Cartesia AI</p>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mt-0.5">Sonic Realism &middot; English</p>
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">Language</label>
-                    <div className="relative">
-                      <select
-                        value={selectedLanguage}
-                        onChange={(e) => setSelectedLanguage(e.target.value)}
-                        className="w-full h-10 pl-3 pr-8 bg-zinc-900/50 border border-white/[0.1] rounded-md text-zinc-200 focus:outline-none focus:border-zinc-500 text-[13px] cursor-pointer appearance-none"
-                      >
-                        {currentLanguages.map(l => (
-                          <option key={l.code} value={l.code} className="bg-zinc-900">{l.label}</option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="space-y-3">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">Voice Model</label>
                     <div className="relative">

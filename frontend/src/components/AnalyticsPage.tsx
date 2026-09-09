@@ -3,11 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { 
-  RefreshCw, Eye,
-  AlertTriangle, X, Activity, XCircle, CheckCircle, 
-  Target, PieChart as PieChartIcon, Calendar
-} from 'lucide-react';
+import { RefreshCw, AlertTriangle, X, Activity, XCircle, CheckCircle, Target, Calendar } from 'lucide-react';
 import { useAuth } from "../contexts/AuthContext";
 import * as auth from "../lib/auth";
 import { api } from "../lib/api";
@@ -287,7 +283,7 @@ const AnalyticsPage: React.FC = () => {
     queryFn: async () => {
       const token = auth.getStoredToken();
       if (!token) throw new Error("Authentication required");
-      const data = await api.getCallHistory(token);
+      const data = await api.getCallHistory(1, 500);
       if (!data.success) throw new Error("Failed to fetch analytics data");
       return data.calls || [];
     },
@@ -844,7 +840,6 @@ const AnalyticsPage: React.FC = () => {
           <div className="space-y-6">
             <RecentCallsList
               recentCalls={analyticsData?.recentCalls}
-              user={user}
               formatDuration={formatDuration}
               getSentimentColor={getSentimentColor}
               getIntentColor={getIntentColor}

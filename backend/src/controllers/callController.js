@@ -1,105 +1,21 @@
-import twilio from 'twilio';
 import Call from '../models/Call.js';
 import Module from '../models/Module.js';
-import * as callService from '../services/callService.js';
-import { createTwiMLResponse, addMediaStream } from '../utils/twimlHelpers.js';
-import { getTranslation } from '../config/translations.js';
-import { formatPhoneNumber } from '../utils/phoneUtils.js';
 import { broadcastCallStatus } from '../websocket/liveCallServer.js';
-import * as leadService from '../services/leadService.js';
 import logger from '../utils/logger.js';
 import { getDemoAgentModule } from '../config/demoAgents.js';
 
+
+// Cartesia "Kendra". Voice ids are UUIDs and are passed to the provider verbatim.
+const DEFAULT_VOICE_ID = '79a125e8-cd45-4c13-8a67-188112f4dd22';
+const DEFAULT_LANGUAGE = 'en-US';
+const VOICE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Initiate a call
+ * Fall back to the default when a stored voice is not a Cartesia UUID -- e.g. a
+ * legacy 'NEERJA' or 'anushka' from the Google/Sarvam era, which Cartesia
+ * rejects, producing a session with no audio.
  */
-export const initiateCall = async (req, res) => {
-    try {
-        const { moduleId, phoneNumber, customerName, selectedVoice, selectedLanguage, ttsProvider } = req.body;
-        const userId = req.user._id;
-
-        logger.info(`Call Initiation Request: [Customer: ${customerName}] [Phone: ${phoneNumber}] [Module: ${moduleId}]`);
-        logger.debug(`Call Parameters:`, { selectedVoice, selectedLanguage, ttsProvider, userId });
-
-        if (!phoneNumber || !customerName || !moduleId) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        const formattedPhone = formatPhoneNumber(phoneNumber);
-        if (!formattedPhone) {
-            return res.status(400).json({ error: 'Invalid phone number format. Please provide a valid 10-digit Indian number.' });
-        }
-
-        const module = await Module.findById(moduleId);
-        if (!module) return res.status(404).json({ error: 'Module not found' });
-
-        const finalVoice = selectedVoice || module.selectedVoice || 'NEERJA';
-        const finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
-        const finalProvider = ttsProvider || module.ttsProvider || 'google';
-
-        // BYOK Validation (Campaigns only)
-        // Ensure user has configured their API keys
-        const ProviderCredential = (await import('../models/ProviderCredential.js')).default;
-        const userProviders = await ProviderCredential.find({ userId });
-        const configuredProviderNames = userProviders.map(p => p.providerName);
-        
-        const requiredProviders = ['twilio', 'deepgram', 'gemini', finalProvider];
-        const missingProviders = requiredProviders.filter(p => !configuredProviderNames.includes(p));
-        
-        if (missingProviders.length > 0) {
-            return res.status(400).json({ 
-                error: 'MISSING_API_KEYS', 
-                message: `You must configure API keys for: ${missingProviders.join(', ')}`,
-                missingProviders
-            });
-        }
-
-        const call = await callService.initiateCall({
-            moduleId,
-            phoneNumber: formattedPhone,
-            customerName,
-            selectedVoice: finalVoice,
-            selectedLanguage: finalLanguage,
-            userId
-        });
-
-        const callRecord = await Call.create({
-            userId,
-            workspaceId: req.user.currentWorkspace?._id,
-            moduleId,
-            moduleName: module.name,
-            customerName: customerName.trim(),
-            phoneNumber: formattedPhone,
-            twilioCallSid: call.sid,
-            selectedVoice: finalVoice,
-            selectedLanguage: finalLanguage,
-            ttsProvider: finalProvider,
-            status: call.status || 'initiated',
-            currentStep: 0,
-            source: 'web'
-        });
-
-        // CRITICAL: Sync call to Lead Journey / Timeline IMMEDIATELY
-        // This ensures the dashboard shows "Ringing" progress on the timeline instead of stale data from a previous call.
-        try {
-            await leadService.syncCallToLead(callRecord);
-            logger.info(`Early lead sync successful for Call ${callRecord.twilioCallSid}`);
-        } catch (leadErr) {
-            logger.error(`Early lead sync failed:`, leadErr);
-        }
-
-        broadcastCallStatus(callRecord._id.toString(), 'started', {
-            customerName: callRecord.customerName,
-            phoneNumber: callRecord.phoneNumber,
-            moduleName: module.name
-        });
-
-        res.json({ success: true, call: callRecord });
-    } catch (error) {
-        logger.error('Failed to initiate call', error);
-        res.status(500).json({ error: 'Failed to initiate call', message: error.message });
-    }
-};
+const resolveVoiceId = (voice) => (voice && VOICE_ID_PATTERN.test(voice) ? voice : DEFAULT_VOICE_ID);
 
 /**
  * Initiate a browser sandbox call
@@ -117,9 +33,13 @@ export const initiateBrowserSandboxCall = async (req, res) => {
         }
 
         let module = null;
-        let finalVoice = selectedVoice || 'anushka';
-        let finalLanguage = selectedLanguage || 'hi-IN';
-        let finalProvider = ttsProvider || 'sarvam';
+        // These defaults previously named Sarvam/Hindi -- a deleted provider and
+        // an unsupported language. 'anushka' is a Sarvam speaker name, which
+        // Cartesia rejects as a voice id, so an API caller that omitted a voice
+        // got a session that played no audio at all.
+        let finalVoice = selectedVoice || DEFAULT_VOICE_ID;
+        let finalLanguage = selectedLanguage || DEFAULT_LANGUAGE;
+        let finalProvider = ttsProvider || 'cartesia';
         const isDemo = typeof moduleId === 'string' && moduleId.startsWith('demo-agent-');
 
         if (isDemo) {
@@ -130,9 +50,11 @@ export const initiateBrowserSandboxCall = async (req, res) => {
         } else {
             module = await Module.findById(moduleId);
             if (!module) return res.status(404).json({ error: 'Module not found' });
-            finalVoice = selectedVoice || module.selectedVoice || 'NEERJA';
-            finalLanguage = selectedLanguage || module.selectedLanguage || 'en-IN';
-            finalProvider = ttsProvider || module.ttsProvider || 'google';
+            // A module saved before the Cartesia migration may still carry a
+            // Google/Sarvam voice name, so validate rather than trust it.
+            finalVoice = resolveVoiceId(selectedVoice || module.selectedVoice);
+            finalLanguage = selectedLanguage || module.selectedLanguage || DEFAULT_LANGUAGE;
+            finalProvider = 'cartesia';
         }
 
         // Generate a unique browser sandbox Call SID
@@ -156,16 +78,6 @@ export const initiateBrowserSandboxCall = async (req, res) => {
             source: 'web'
         });
 
-        // Trigger early lead timeline sync
-        if (workspaceId) {
-            try {
-                await leadService.syncCallToLead(callRecord);
-                logger.info(`Early lead sync successful for Browser Sandbox Call ${callRecord.twilioCallSid}`);
-            } catch (leadErr) {
-                logger.error(`Early lead sync failed:`, leadErr);
-            }
-        }
-
         broadcastCallStatus(callRecord._id.toString(), 'started', {
             customerName: callRecord.customerName,
             phoneNumber: callRecord.phoneNumber,
@@ -179,90 +91,8 @@ export const initiateBrowserSandboxCall = async (req, res) => {
     }
 };
 
-/**
- * Handle Twilio voice webhook
- */
-export const handleCallWebhook = async (req, res) => {
-    try {
-        const { moduleId, CallSid, From, To } = { ...req.query, ...req.body };
 
-        logger.info(`Twilio Webhook Received: [CallSid: ${CallSid}] [From: ${From}] [To: ${To}] [ModuleId: ${moduleId}]`);
 
-        // We respond immediately with the Media Stream TwiML to beat Twilio's 5s timeout.
-        // The WebSocket connection will handle the actual logic and module lookup.
-        const twiml = createTwiMLResponse();
-
-        // 1. Initiate full bidirectional audio stream to our WebSocket
-        addMediaStream(twiml, CallSid);
-
-        // 2. Keep the Twilio call open for up to an hour while WebSocket handles audio
-        twiml.pause({ length: 3600 });
-
-        const twimlString = twiml.toString();
-        logger.info(`Live streaming call initiated for [CallSid: ${req.body.CallSid}]`);
-        res.type('text/xml');
-        res.send(twiml.toString());
-    } catch (error) {
-        logger.error(`Error in handleCallWebhook: ${error.message}`);
-        res.status(500).send('Internal Server Error');
-    }
-};
-
-export const handleDeveloperCallWebhook = async (req, res) => {
-    try {
-        const { developerKeyId, prompt } = req.query;
-        
-        if (!developerKeyId) {
-            throw new Error('Developer Key ID is missing');
-        }
-
-        const publicUrl = process.env.NGROK_URL || process.env.BASE_URL;
-        // Connect to the generic live stream. We can use the same /api/streams/twilio 
-        // endpoint. The stream endpoint expects some headers to know the context.
-        // We will pass the developerKeyId as a header so the streamingCallHandler knows
-        // to use the developer's config.
-        const twiml = new twilio.twiml.VoiceResponse();
-        
-        const connect = twiml.connect();
-        const stream = connect.stream({
-            url: `wss://${publicUrl.replace(/^https?:\/\//, '')}/api/streams/twilio`,
-            track: 'inbound_track'
-        });
-        
-        // Pass parameters as custom parameters in the stream
-        stream.parameter({ name: 'developerKeyId', value: developerKeyId });
-        stream.parameter({ name: 'prompt', value: prompt || '' });
-        stream.parameter({ name: 'isDeveloperCall', value: 'true' });
-
-        logger.info(`Live developer streaming call initiated for [CallSid: ${req.body.CallSid}] with [KeyId: ${developerKeyId}]`);
-        res.type('text/xml');
-        res.send(twiml.toString());
-    } catch (error) {
-        logger.error(`Error in handleDeveloperCallWebhook: ${error.message}`);
-        res.status(500).send('Internal Server Error');
-    }
-};
-
-/**
- * Handle status updates from Twilio
- */
-export const handleStatus = async (req, res) => {
-    const { CallSid, CallStatus, CallDuration } = req.body;
-    try {
-        const call = await Call.findOneAndUpdate(
-            { twilioCallSid: CallSid },
-            { status: CallStatus, duration: CallDuration },
-            { new: true }
-        );
-        if (call) {
-            broadcastCallStatus(call._id.toString(), CallStatus, { duration: CallDuration });
-        }
-        res.sendStatus(200);
-    } catch (error) {
-        logger.error('Status update error', error);
-        res.sendStatus(500);
-    }
-};
 
 /**
  * Get call history with pagination

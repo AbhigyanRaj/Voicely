@@ -102,7 +102,7 @@ const LiveCallModal: React.FC<LiveCallModalProps> = ({
           return;
         }
 
-        const data = await api.getCallDetails(token, callId);
+        const data = await api.getCallDetails(callId);
 
         if (data.success && data.call) {
           const currentStatus = data.call.status;

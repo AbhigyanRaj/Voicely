@@ -91,18 +91,19 @@ const callSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  // A Cartesia voice UUID; see models/Module.js for why the old default broke.
   selectedVoice: {
     type: String,
-    default: 'NEERJA',
+    default: '79a125e8-cd45-4c13-8a67-188112f4dd22',
   },
   selectedLanguage: {
     type: String,
-    default: 'en-IN',
+    default: 'en-US',
   },
   ttsProvider: {
     type: String,
-    enum: ['google', 'sarvam', 'cartesia', 'deepgram'],
-    default: 'google',
+    enum: ['cartesia'],
+    default: 'cartesia',
   },
   optimizeFor: {
     type: String,

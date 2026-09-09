@@ -1,20 +1,18 @@
 import express from 'express';
 import * as callController from '../controllers/callController.js';
 import { protect } from '../middleware/auth.js';
-import { validateTwilioRequest } from '../config/twilio.js';
-import { validateRequest } from '../middleware/validator.js';
-import { callInitiateLimiter } from '../middleware/rateLimiter.js';
-import { initiateCallSchema } from '../validators/callValidator.js';
+import { sandboxLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-// Webhooks (Public but validated)
-router.post('/handle-call', validateTwilioRequest, callController.handleCallWebhook);
-router.post('/handle-developer-call', validateTwilioRequest, callController.handleDeveloperCallWebhook);
-router.post('/status', validateTwilioRequest, callController.handleStatus);
-
-// API Routes (Optional protect for sandbox calls)
-router.post('/browser-sandbox', (req, res, next) => {
+/**
+ * Start a browser voice session.
+ *
+ * Auth is optional: guests get the demo agents, signed-in users can also select
+ * their own. Rate limited separately from the general limiter because each
+ * session costs real STT, LLM and TTS spend on the server's own keys.
+ */
+router.post('/browser-sandbox', sandboxLimiter, (req, res, next) => {
     if (req.headers.authorization) {
         return protect(req, res, next);
     }
@@ -22,7 +20,6 @@ router.post('/browser-sandbox', (req, res, next) => {
 }, callController.initiateBrowserSandboxCall);
 
 router.use(protect);
-router.post('/initiate', callInitiateLimiter, validateRequest(initiateCallSchema), callController.initiateCall);
 router.get('/history', callController.getCallHistory);
 router.get('/:id', callController.getCallById);
 

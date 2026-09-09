@@ -28,18 +28,24 @@ const moduleSchema = new mongoose.Schema({
     enum: ['loan', 'credit_card', 'custom'],
     required: true,
   },
+  // Cartesia is the only provider. Kept as a field so existing rows load and so
+  // a second provider can be added without a migration.
   ttsProvider: {
     type: String,
-    enum: ['google', 'sarvam', 'cartesia', 'deepgram'],
-    default: 'google',
+    enum: ['cartesia'],
+    default: 'cartesia',
   },
   selectedLanguage: {
     type: String,
-    default: 'en-IN'
+    default: 'en-US'
   },
+  // Must be a Cartesia voice UUID: it is passed straight through as one. The
+  // previous default, 'NEERJA', was a Google voice name, so any row that kept
+  // the default was rejected by Cartesia and played no audio for the whole
+  // session -- silently, because TTS errors are logged rather than surfaced.
   selectedVoice: {
     type: String,
-    default: 'NEERJA'
+    default: '79a125e8-cd45-4c13-8a67-188112f4dd22'
   },
   questions: [{
     question: {

@@ -1,8 +1,53 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fetch from 'node-fetch';
+import https from 'https';
+import { record } from '../utils/latencyMetrics.js';
 import logger from '../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Keep-alive so a turn doesn't start with a DNS + TCP + TLS handshake. The
+// Cartesia service has had this for a while; the LLM path never did, and it is
+// on the critical path of every single turn.
+const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 50 });
+
+// Warm the socket at startup so the first turn of the first call isn't the one
+// that pays for the handshake.
+fetch('https://api.groq.com/', { agent: httpsAgent }).catch(() => {});
+
+// Cache Gemini model handles. A fresh client and model handle were built for
+// every utterance.
+const geminiModelCache = new Map();
+const getGeminiModel = (apiKey, modelName) => {
+  const cacheKey = `${apiKey}:${modelName}`;
+  let model = geminiModelCache.get(cacheKey);
+  if (!model) {
+    model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: modelName });
+    geminiModelCache.set(cacheKey, model);
+  }
+  return model;
+};
+
+// Groq model selection.
+//
+// The code used to pin `llama-3.3-70b-versatile` here and in every analysis
+// call. Groq has since decommissioned it -- and `llama-3.1-8b-instant` -- so
+// both now return 404 model_not_found, which took the conversational pipeline
+// and all post-call analysis down completely.
+//
+// Measured TTFT over the models the account can currently reach:
+//   qwen/qwen3.6-27b     112ms   (with reasoning_effort 'none')
+//   groq/compound-mini   906ms
+//   openai/gpt-oss-20b   spends its first tokens on a reasoning channel
+//
+// `reasoning_effort: 'none'` matters: without it qwen streams a <think> block,
+// which would be fed straight to TTS and spoken aloud.
+const REALTIME_LLM_MODEL = 'qwen/qwen3.6-27b';
+const REALTIME_REASONING_EFFORT = 'none';
+
+// Post-call analysis. Latency is irrelevant here, but it has to return
+// parseable JSON, which this model does.
+export const ANALYSIS_LLM_MODEL = 'qwen/qwen3.6-27b';
 
 /**
  * Universal fallback handler for Gemini generative API requests.
@@ -92,34 +137,64 @@ export const parseChatHistoryToMessages = (systemPrompt, chatHistory) => {
   return messages;
 };
 
-export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk, llmApiKey = null) => {
+/**
+ * Stream a conversational reply.
+ *
+ * @param {string}   systemPrompt
+ * @param {string}   chatHistory
+ * @param {Function} onChunk       called with each text delta
+ * @param {string?}  llmApiKey
+ * @param {AbortSignal?} signal    aborts an in-flight generation. Used by
+ *   speculative prefill, which starts generating against a partial transcript
+ *   and abandons the attempt when a newer partial supersedes it.
+ */
+export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk, llmApiKey = null, signal = null) => {
   const apiKey = llmApiKey || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
   const isGroq = apiKey && apiKey.startsWith('gsk_');
   
   if (!isGroq) {
     // Gemini Implementation
-    const localGenAI = new GoogleGenerativeAI(apiKey);
-    const model = localGenAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+    const model = getGeminiModel(apiKey, 'gemini-2.0-flash-lite');
+
+    // The system prompt goes in once. parseChatHistoryToMessages already emits it
+    // as the leading message, and this branch used to *also* prepend it as a
+    // "SYSTEM INSTRUCTION:" turn -- roughly 1.5KB of duplicate prefill on every
+    // request.
     const messages = parseChatHistoryToMessages(systemPrompt, chatHistory);
-    // Convert to Gemini format
-    const geminiMessages = messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : m.role === 'system' ? 'user' : 'user',
-      parts: [{ text: m.content }]
-    }));
-    // Add system prompt if it exists
-    if (systemPrompt) {
-      geminiMessages.unshift({ role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemPrompt}` }]});
-      geminiMessages.unshift({ role: 'model', parts: [{ text: `Understood. I will follow these instructions.` }]});
-    }
+    const geminiMessages = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+    const start = performance.now();
+    let sawFirstChunk = false;
 
     try {
-      const result = await model.generateContentStream({ contents: geminiMessages });
+      const result = await model.generateContentStream({
+        contents: geminiMessages,
+        systemInstruction: systemPrompt
+          ? { role: 'system', parts: [{ text: systemPrompt }] }
+          : undefined,
+        // The Groq branch has always capped at 150; this one was uncapped, so a
+        // rambling reply could stream well past what the prompt asks for.
+        generationConfig: { maxOutputTokens: 200, temperature: 0.7 }
+      });
+
       let fullText = '';
       for await (const chunk of result.stream) {
         const chunkText = chunk.text();
+        if (chunkText && !sawFirstChunk) {
+          sawFirstChunk = true;
+          const ttft = performance.now() - start;
+          record('llm.provider_ttft.gemini', ttft);
+          logger.info(`[LATENCY TIMER] Gemini First Chunk received in ${ttft.toFixed(1)}ms`);
+        }
         fullText += chunkText;
         if (onChunk) onChunk(chunkText);
       }
+      record('llm.provider_total.gemini', performance.now() - start);
       return fullText;
     } catch (error) {
       logger.error('Gemini conversational stream error', error);
@@ -129,23 +204,26 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
 
   // Groq Implementation
   const start = performance.now();
-  logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: llama-3.3-70b-versatile)`);
+  logger.info(`[LATENCY TIMER] Groq Stream Query started (Model: ${REALTIME_LLM_MODEL})`);
 
   try {
     const messages = parseChatHistoryToMessages(systemPrompt, chatHistory);
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
+      agent: httpsAgent,
+      signal: signal || undefined,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: REALTIME_LLM_MODEL,
         messages: messages,
         stream: true,
         max_tokens: 150,
-        temperature: 0.7
+        temperature: 0.7,
+        reasoning_effort: REALTIME_REASONING_EFFORT
       })
     });
 
@@ -159,6 +237,17 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
       let fullText = '';
       let isFirstChunk = true;
       let buffer = '';
+
+      const onAbort = () => {
+        response.body.destroy();
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        reject(err);
+      };
+      if (signal) {
+        if (signal.aborted) return onAbort();
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
 
       response.body.on('data', (chunk) => {
         buffer += chunk.toString('utf8');
@@ -178,6 +267,7 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
                 if (isFirstChunk) {
                   isFirstChunk = false;
                   const firstChunkDuration = performance.now() - start;
+                  record('llm.provider_ttft.groq', firstChunkDuration);
                   logger.info(`[LATENCY TIMER] Groq First Chunk received in ${firstChunkDuration.toFixed(1)}ms!`);
                 }
                 fullText += content;
@@ -201,6 +291,7 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
           } catch (e) {}
         }
         const totalDuration = performance.now() - start;
+        record('llm.provider_total.groq', totalDuration);
         logger.info(`[LATENCY TIMER] Groq full stream complete in ${totalDuration.toFixed(1)}ms [Length: ${fullText.length}]`);
         resolve(fullText.trim());
       });
@@ -225,7 +316,7 @@ export const transcribeAudio = async (audioBuffer) => {
   }
 };
 
-export const callGroqChatCompletion = async (messages, modelName = 'llama-3.3-70b-versatile') => {
+export const callGroqChatCompletion = async (messages, modelName = ANALYSIS_LLM_MODEL) => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("GROQ_API_KEY not configured in environment");
@@ -241,7 +332,8 @@ export const callGroqChatCompletion = async (messages, modelName = 'llama-3.3-70
       model: modelName,
       messages: messages,
       temperature: 0.2,
-      max_tokens: 1024
+      max_tokens: 1024,
+      reasoning_effort: 'none'
     })
   });
 
@@ -260,7 +352,7 @@ export const generateSummary = async (text) => {
     const messages = [
       { role: 'user', content: `You are a helpful assistant that summarizes call transcripts and extracts key insights. Please summarize this call transcript and extract key insights: ${text}` }
     ];
-    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    return await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
   } catch (error) {
     logger.error('Summary generation error via Groq', error);
     throw error;
@@ -283,7 +375,7 @@ export const extractAnswersJSON = async (chatHistory, questions) => {
     Return a strictly valid JSON object where the keys are the exact questions as strings, and the values are the user's extracted answers. If a question was not answered or wasn't reached, set the value to "Not answered". Do NOT include Markdown blocks like \`\`\`json. Return only the raw JSON string.`;
 
     const messages = [{ role: 'user', content: prompt }];
-    let responseText = await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    let responseText = await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
 
     // Strip markdown formatting if LLM included it despite instructions
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
@@ -319,7 +411,7 @@ You are a loan decisioning expert. Respond only with YES, NO, or INVESTIGATION_R
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    return await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
   } catch (error) {
     logger.error('Loan evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
@@ -351,7 +443,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    return await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
   } catch (error) {
     logger.error('Credit card evaluation error via Groq', error);
     return "INVESTIGATION_REQUIRED";
@@ -364,7 +456,7 @@ You are a credit card decisioning expert. Respond only with YES, NO, or INVESTIG
 export const analyzeResponseWithGemini = async (prompt) => {
   try {
     const messages = [{ role: 'user', content: prompt }];
-    return await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    return await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
   } catch (error) {
     logger.error('Groq analysis error', error);
     throw error;
@@ -453,7 +545,7 @@ Rules:
 
   try {
     const messages = [{ role: 'user', content: prompt }];
-    let responseText = await callGroqChatCompletion(messages, 'llama-3.3-70b-versatile');
+    let responseText = await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
     
     // Safety: Strip markdown
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();

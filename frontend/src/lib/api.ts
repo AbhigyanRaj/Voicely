@@ -64,80 +64,24 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
   return res.json();
 };
 
-// API service for backend communication
+// API service for backend communication.
+//
+// The `token` parameters these methods used to take were never read -- apiFetch
+// reads it from storage itself. Dropped along with initiateCall (telephony),
+// getCallCostInfo (no such endpoint; it resolved to /calls/:id and 500'd),
+// healthCheck, getUserAnalytics and the workspace helpers, none of which had a
+// single call site.
 export const api = {
-  async initiateCall(token: string, moduleId: string, phoneNumber: string, customerName: string, selectedVoice?: string, selectedLanguage?: string, ttsProvider?: string) {
-    return apiFetch('/calls/initiate', {
-      method: 'POST',
-      body: JSON.stringify({
-        moduleId,
-        phoneNumber,
-        customerName,
-        selectedVoice,
-        selectedLanguage,
-        ttsProvider,
-      }),
-    });
+  async getCallDetails(callId: string) {
+    return apiFetch(`/calls/${callId}`, { method: 'GET' });
   },
 
-  async getCallDetails(token: string, callId: string) {
-    return apiFetch(`/calls/${callId}`, {
-      method: 'GET',
-    });
-  },
-
-  // Get call cost information - AUTH REQUIRED
-  async getCallCostInfo(token: string) {
-    return apiFetch('/calls/cost-info', {
-      method: 'GET',
-    });
-  },
-
-  // Health check
-  async healthCheck() {
-    return apiFetch('/health');
-  },
-
-  // Get call history - AUTH REQUIRED
-  async getCallHistory(token: string, page = 1, limit = 20, status?: string, moduleId?: string) {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-    });
+  /** Session history. Pass a large limit for analytics: the default is 10. */
+  async getCallHistory(page = 1, limit = 200, status?: string, moduleId?: string) {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (status) params.append('status', status);
     if (moduleId) params.append('moduleId', moduleId);
-
-    return apiFetch(`/calls/history?${params}`, {
-      method: 'GET',
-    });
-  },
-
-  // Get user analytics - AUTH REQUIRED
-  async getUserAnalytics(token: string) {
-    return apiFetch('/auth/analytics', {
-      method: 'GET',
-    });
-  },
-
-  // Workspace management - AUTH REQUIRED
-  async getWorkspaces(token: string) {
-    return apiFetch('/workspaces', {
-      method: 'GET',
-    });
-  },
-
-  async createWorkspace(token: string, name: string, category: string) {
-    return apiFetch('/workspaces', {
-      method: 'POST',
-      body: JSON.stringify({ name, category }),
-    });
-  },
-
-  async switchWorkspace(token: string, workspaceId: string) {
-    return apiFetch('/workspaces/switch', {
-      method: 'POST',
-      body: JSON.stringify({ workspaceId }),
-    });
+    return apiFetch(`/calls/history?${params}`, { method: 'GET' });
   },
 };
 

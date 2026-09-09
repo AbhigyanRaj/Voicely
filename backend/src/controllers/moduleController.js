@@ -33,6 +33,26 @@ export const getModules = async (req, res) => {
 /**
  * Create a new module
  */
+/**
+ * Accept either bare strings or `{question, order, required}` objects and return
+ * the shape models/Module.js requires. `order` is required by the schema, so it
+ * is derived from array position when absent.
+ */
+const normalizeQuestions = (questions) => {
+    if (!Array.isArray(questions)) return [];
+    return questions
+        .map((entry, index) => {
+            const text = typeof entry === 'string' ? entry : entry?.question;
+            if (!text || !String(text).trim()) return null;
+            return {
+                question: String(text).trim(),
+                order: typeof entry?.order === 'number' ? entry.order : index,
+                required: typeof entry?.required === 'boolean' ? entry.required : true,
+            };
+        })
+        .filter(Boolean);
+};
+
 export const createModule = async (req, res) => {
     try {
         const { name, type, questions, systemPrompt, ttsProvider, selectedLanguage, selectedVoice } = req.body;
@@ -43,7 +63,7 @@ export const createModule = async (req, res) => {
             workspaceId: req.user.currentWorkspace?._id,
             name,
             type: type || 'custom',
-            questions: questions || [],
+            questions: normalizeQuestions(questions),
             systemPrompt: systemPrompt || ''
         };
         if (ttsProvider) moduleData.ttsProvider = ttsProvider;
@@ -80,6 +100,10 @@ export const getModuleById = async (req, res) => {
  */
 export const updateModule = async (req, res) => {
     try {
+        // Normalise here too: PUT had no validator, so raw body reached the update.
+        if (req.body && req.body.questions !== undefined) {
+            req.body.questions = normalizeQuestions(req.body.questions);
+        }
         const query = { _id: req.params.id, userId: req.user._id };
         if (req.user.currentWorkspace) {
             query.workspaceId = req.user.currentWorkspace._id;
