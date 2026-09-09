@@ -2,11 +2,9 @@ import React from 'react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Activity, Eye } from 'lucide-react';
-import LeadTimeline from '../LeadTimeline';
 
 interface RecentCallsListProps {
   recentCalls: any[];
-  user: any;
   formatDuration: (seconds: number) => string;
   getSentimentColor: (sentiment: string) => string;
   getIntentColor: (tier: string) => string;
@@ -18,7 +16,6 @@ interface RecentCallsListProps {
 
 export const RecentCallsList: React.FC<RecentCallsListProps> = ({
   recentCalls,
-  user,
   formatDuration,
   getSentimentColor,
   getIntentColor,
@@ -129,10 +126,6 @@ export const RecentCallsList: React.FC<RecentCallsListProps> = ({
                       {expandedCallId === call._id && (
                         <tr className="bg-white/[0.01]">
                           <td colSpan={6} className="px-10 py-2 border-t border-white/[0.03]">
-                            <LeadTimeline 
-                              phoneNumber={call.phoneNumber} 
-                              workspaceId={call.workspaceId || user?.currentWorkspace?._id || ''} 
-                            />
                           </td>
                         </tr>
                       )}

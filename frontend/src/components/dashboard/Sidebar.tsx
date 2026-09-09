@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Layers, PlayCircle, BarChart3, Code, Settings, LogOut, Zap, Home } from 'lucide-react';
+import { Layers, BarChart3, Code, Settings, LogOut, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const Sidebar: React.FC = () => {
@@ -15,15 +15,9 @@ export const Sidebar: React.FC = () => {
   const navItems = [
     { name: 'Analytics', path: '/analytics', icon: <BarChart3 strokeWidth={1.5} className="w-5 h-5" /> },
     { name: 'Voice Agents', path: '/modules', icon: <Layers strokeWidth={1.5} className="w-5 h-5" /> },
-    { name: 'Campaigns', path: '/campaign', icon: <PlayCircle strokeWidth={1.5} className="w-5 h-5" /> },
     { name: 'Developers', path: '/developer', icon: <Code strokeWidth={1.5} className="w-5 h-5" /> },
     { name: 'Settings', path: '/settings', icon: <Settings strokeWidth={1.5} className="w-5 h-5" /> },
   ];
-
-  const userPlan = user?.subscription?.tier
-    ? user.subscription.tier.charAt(0).toUpperCase() + user.subscription.tier.slice(1)
-    : 'Free';
-
   return (
     <div className="flex flex-col w-[60px] h-full bg-[#131313] border-r border-white/[0.03] text-zinc-300 flex-shrink-0 relative">
       <div className="flex flex-col items-center h-full py-4">
@@ -53,7 +47,7 @@ export const Sidebar: React.FC = () => {
                 )
               }
             >
-              {React.cloneElement(item.icon as React.ReactElement, {
+              {React.cloneElement(item.icon as React.ReactElement<{ className?: string }>, {
                 className: cn(
                   "w-5 h-5",
                   location.pathname === item.path ? "text-zinc-200" : "text-zinc-500 group-hover:text-zinc-300"

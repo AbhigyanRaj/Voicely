@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Menu, X, LogOut, Code, Layers, Settings, User, PlayCircle, BarChart3 } from 'lucide-react';
+import { Menu, X, LogOut, Code, Layers, Settings, User, BarChart3 } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import CreateModule from './CreateModule';
 import { ArrowRight } from 'lucide-react';
@@ -22,18 +22,12 @@ const Navbar: React.FC = () => {
   const [authModal, setAuthModal] = useState<null | 'signup' | 'login'>(null);
   const [createModuleOpen, setCreateModuleOpen] = useState(false);
   const location = useLocation();
-
-  const userPlan = user?.subscription?.tier
-    ? user.subscription.tier.charAt(0).toUpperCase() + user.subscription.tier.slice(1)
-    : 'Free';
-
   const handleSignOut = async () => {
     try { await signOut(); } catch (e) { console.error('Sign out error:', e); }
   };
 
   const navItems = [
     { name: 'My Voice Agents', path: '/modules', icon: <Layers className="w-4 h-4" /> },
-    { name: 'Campaigns', path: '/campaign', icon: <PlayCircle className="w-4 h-4" /> },
     { name: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-4 h-4" /> },
     { name: 'Developers', path: '/developer', icon: <Code className="w-4 h-4" /> },
     { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },

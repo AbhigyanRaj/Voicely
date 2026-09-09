@@ -1,7 +1,6 @@
 import React, { Suspense } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import Navbar from "./components/Navbar";
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 const Hero = React.lazy(() => import('./components/Hero'));
@@ -10,14 +9,13 @@ const AnalyticsPage = React.lazy(() => import('./components/AnalyticsPage'));
 const SettingsPage = React.lazy(() => import('./components/SettingsPage'));
 const DeveloperPage = React.lazy(() => import('./components/DeveloperPage'));
 const ApiDocsPage = React.lazy(() => import('./components/ApiDocsPage'));
-const CampaignPage = React.lazy(() => import('./components/CampaignPage'));
 const NotFoundPage = React.lazy(() => import('./components/NotFoundPage'));
 import PageLoader from './components/PageLoader';
 import { PageTransition } from './components/PageTransition';
 import { AuthProvider } from './contexts/AuthContext';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { GlobalErrorFallback } from './components/GlobalErrorBoundary';
 import { DashboardLayout } from './components/dashboard/DashboardLayout';
 
@@ -29,7 +27,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <GoogleOAuthProvider clientId={googleClientId}>
         <AuthProvider>
-          <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
+          <ErrorBoundary FallbackComponent={GlobalErrorFallback as React.ComponentType<FallbackProps>}>
             <Suspense fallback={<PageLoader />}>
               <PageTransition routeKey={location.pathname}>
                 <Routes location={location}>
@@ -38,13 +36,6 @@ function App() {
                     <ProtectedRoute>
                       <DashboardLayout>
                         <ModulesPage />
-                      </DashboardLayout>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/campaign" element={
-                    <ProtectedRoute>
-                      <DashboardLayout>
-                        <CampaignPage />
                       </DashboardLayout>
                     </ProtectedRoute>
                   } />

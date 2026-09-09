@@ -1,16 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "./ui/button";
-import Modal from "./ui/modal";
-import { UserPlus, Layers, Mic, BarChart3, Zap, Shield, ArrowRight, LogIn, Eye, EyeOff, Code, Globe, Cpu, CheckCircle2, Server, Headphones, Github } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Mic, Github } from "lucide-react";
 import CreateModule from "./CreateModule";
-import ContactUploader from "./ContactUploader";
 import { VoiceSandbox } from "./VoiceSandbox";
 import { AuthModal } from "./AuthModal";
 import { useAuth } from "../contexts/AuthContext";
-import * as auth from "../lib/auth";
 import { getApiBaseUrl } from "../lib/api";
 import { Link } from "react-router-dom";
-import { DashboardMockup } from "./hero/DashboardMockup";
 import { ComparisonSection } from "./ComparisonSection";
 import { HighlightsSection } from "./HighlightsSection";
 import { CaseStudiesSection } from "./CaseStudiesSection";
@@ -20,22 +15,13 @@ import { TestimonialsMarquee } from "./TestimonialsMarquee";
 import Navbar from "./Navbar";
 
 const Hero: React.FC = () => {
-  const [modalOpen, setModalOpen] = useState(false);
   const [authModal, setAuthModal] = useState<null | 'signup' | 'login'>(null);
   const [createModuleOpen, setCreateModuleOpen] = useState(false);
   const [sandboxOpen, setSandboxOpen] = useState(false);
-  const [selectedModule, setSelectedModule] = useState<string | null>(null);
-  const [userModules, setUserModules] = useState<auth.VoiceModule[]>([]);
   
-  // Lifted state to persist across modal closes
-  const [ttsProvider, setTtsProvider] = useState<'google' | 'sarvam'>('google');
-  const [selectedVoice, setSelectedVoice] = useState('NEERJA');
-  const [selectedLanguage, setSelectedLanguage] = useState('en-IN');
-  const [selectedModel, setSelectedModel] = useState('gemini');
 
   const { user } = useAuth();
   
-  const [visitorCount, setVisitorCount] = useState<number | null>(null);
 
   useEffect(() => {
     // Generate or retrieve visitor ID
@@ -56,7 +42,7 @@ const Hero: React.FC = () => {
         });
         const data = await response.json();
         if (data.success && data.count) {
-          setVisitorCount(data.count);
+          /* count is not displayed anywhere */
         }
       } catch (err) {
         console.error('Failed to track visitor:', err);
@@ -65,30 +51,8 @@ const Hero: React.FC = () => {
     trackVisitor();
   }, []);
 
-  const loadUserModules = useCallback(async () => {
-    if (!user) return;
-    try {
-      const modules = await auth.getUserModules();
-      setUserModules(modules);
-    } catch (error) {
-      console.error('Failed to load modules:', error);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (modalOpen && user) {
-      loadUserModules();
-      setSelectedModule(null);
-    }
-  }, [modalOpen, user, loadUserModules]);
-
   const openAuth = (tab: 'login' | 'signup') => {
     setAuthModal(tab);
-  };
-
-  const handleModalClose = () => {
-    setModalOpen(false);
-    setSelectedModule(null);
   };
 
   return (
@@ -186,30 +150,6 @@ const Hero: React.FC = () => {
         <FooterSection />
 
         {/* Modals */}
-        <Modal open={modalOpen} onClose={handleModalClose} maxWidth="max-w-lg">
-          <div className="w-full p-6 sm:p-8 flex flex-col">
-            <h2 className="text-xl font-bold text-white mb-2 text-center uppercase tracking-tighter">Get Started</h2>
-            <p className="text-xs text-zinc-500 mb-6 text-center font-medium">Upload your lead data to begin the evolution.</p>
-            <ContactUploader
-              userModules={userModules}
-              selectedModule={selectedModule}
-              ttsProvider={ttsProvider}
-              setTtsProvider={setTtsProvider}
-              selectedVoice={selectedVoice}
-              setSelectedVoice={setSelectedVoice}
-              selectedLanguage={selectedLanguage}
-              setSelectedLanguage={setSelectedLanguage}
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              onSubmit={() => {
-                setModalOpen(false);
-                setSelectedModule(null);
-              }}
-              onClose={handleModalClose}
-            />
-          </div>
-        </Modal>
-
         {!!authModal && (
           <AuthModal
             open={!!authModal}
