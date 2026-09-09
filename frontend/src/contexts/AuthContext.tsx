@@ -10,6 +10,8 @@ interface AuthContextType {
   setUser: (user: auth.User | null) => void;
   emailRegister: (name: string, email: string, password: string) => Promise<void>;
   emailLogin: (email: string, password: string) => Promise<void>;
+  /** Last sign-in failure, for the UI to surface. */
+  authError: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,27 +56,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initAuth();
   }, []);
 
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const googleLogin = useGoogleLogin({
     onSuccess: async (response) => {
+      // The server resolves the profile from this token; fetching userinfo here
+      // and forwarding the claims is what made the endpoint forgeable.
       try {
-        const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${response.access_token}` },
-        }).then(res => res.json());
-        const authResponse = await auth.signInWithGoogle(userInfo);
+        setAuthError(null);
+        const authResponse = await auth.signInWithGoogle(response.access_token);
         if (authResponse.success) setUser(authResponse.user);
-      } catch (error) {
-        throw error;
+        else setAuthError('Sign-in failed. Please try again.');
+      } catch (error: any) {
+        // Rethrowing from an async callback was an unhandled rejection, so a
+        // failed sign-in produced no visible feedback at all.
+        console.error('Google sign-in failed:', error);
+        setAuthError(error?.message || 'Sign-in failed. Please try again.');
       }
     },
-    onError: () => {},
+    onError: (error) => {
+      console.error('Google OAuth error:', error);
+      setAuthError('Google sign-in was cancelled or blocked.');
+    },
   });
 
   const signIn = async () => {
-    try {
-      googleLogin();
-    } catch (error) {
-      throw error;
-    }
+    setAuthError(null);
+    googleLogin();
   };
 
   const signOut = async () => {
@@ -98,7 +106,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, signIn, signOut, setUser,
+      user, loading, signIn, signOut, setUser, authError,
       emailRegister: emailRegisterHandler,
       emailLogin: emailLoginHandler,
     }}>

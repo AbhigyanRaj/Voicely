@@ -3,10 +3,27 @@ import crypto from 'crypto';
 import DeveloperKey from '../models/DeveloperKey.js';
 import DeepgramService from '../services/deepgramService.js';
 import StreamingCartesiaTTS from '../services/streamingCartesiaTTS.js';
-import { StreamingSarvamTTS } from '../services/sarvamService.js';
 import { decrypt } from '../utils/crypto.js';
 import logger from '../utils/logger.js';
 import fetch from 'node-fetch';
+
+/**
+ * Which vendor a model id routes to. Kept beside the request builder below so
+ * credential resolution and endpoint selection can never disagree -- that
+ * disagreement is what sent secrets to the wrong vendor.
+ */
+const llmProviderFor = (llmModel = '') => {
+    if (llmModel.includes('gpt-') || llmModel.includes('gpt4')) return 'openai';
+    if (llmModel.includes('gemini')) return 'gemini';
+    return 'groq';
+};
+
+/** Credential map keys, as stored by the dashboard. */
+const LLM_CREDENTIAL_NAME = {
+    openai: 'OpenAI',
+    gemini: 'Google',
+    groq: 'Groq',
+};
 
 // Simple LLM Wrapper for BYOK
 const generateDeveloperLLMStream = async (systemPrompt, chatHistory, userText, llmModel, apiKey, onChunk) => {
@@ -48,18 +65,19 @@ const generateDeveloperLLMStream = async (systemPrompt, chatHistory, userText, l
     }
 
     try {
-        if (llmModel.includes('gpt-') || llmModel.includes('gpt4')) {
+        const provider = llmProviderFor(llmModel);
+        if (provider === 'openai') {
             endpoint = 'https://api.openai.com/v1/chat/completions';
             headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
             body = { model: llmModel === 'gpt-4o' ? 'gpt-4o' : 'gpt-4o-mini', messages, stream: true, max_tokens: 150 };
-        } else if (llmModel.includes('gemini')) {
+        } else if (provider === 'gemini') {
             endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${llmModel}:streamGenerateContent?key=${apiKey}`;
             headers = { 'Content-Type': 'application/json' };
             body = { contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{text: m.content}] })) };
         } else {
             // Groq/Llama fallback
             endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-            headers = { 'Authorization': `Bearer ${apiKey || process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' };
+            headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
             body = { model: 'llama-3.1-8b-instant', messages, stream: true, max_tokens: 150 };
         }
 
@@ -131,7 +149,10 @@ export const setupDeveloperStreamWebSocket = () => {
             }
 
             const keyHash = crypto.createHash('sha256').update(token).digest('hex');
-            const developerKey = await DeveloperKey.findOne({ keyHash });
+            // providerCredentials is select:false on the schema, so the BYOK
+            // resolution below has to ask for it explicitly -- otherwise every
+            // session silently falls back to the platform's own provider keys.
+            const developerKey = await DeveloperKey.findOne({ keyHash }).select('+providerCredentials');
 
             if (!developerKey) {
                 ws.close(1008, 'Unauthorized: Key not found');
@@ -146,7 +167,18 @@ export const setupDeveloperStreamWebSocket = () => {
             ws.send(JSON.stringify({ type: 'connected', message: 'Developer S2S Stream Established' }));
             logger.info(`Developer S2S Stream Established for Key ID: ${developerKey._id}`);
 
-            // Decrypt keys
+            // Credential resolution, keyed by the provider each slot will actually
+            // call.
+            //
+            // This was a positional `||` cascade -- llmKey took the first of
+            // OpenAI/Google/Anthropic that happened to be present, ttsKey the
+            // first of Cartesia/ElevenLabs/Sarvam -- which routed one vendor's
+            // secret to another vendor's endpoint. On the *default* selection the
+            // user's Sarvam key was sent to api.cartesia.ai; choosing Whisper for
+            // STT put their OpenAI key into a generativelanguage.googleapis.com
+            // query string; choosing Claude sent it to api.groq.com as a bearer
+            // token. It also never looked up 'Groq', so a developer's own Groq key
+            // was stored and silently ignored.
             const getDecryptedKey = (providerName) => {
                 if (!developerKey.providerCredentials) return null;
                 const encrypted = developerKey.providerCredentials.get(providerName);
@@ -154,9 +186,35 @@ export const setupDeveloperStreamWebSocket = () => {
                 try { return decrypt(encrypted); } catch (e) { return null; }
             };
 
-            const sttKey = getDecryptedKey('Deepgram') || process.env.DEEPGRAM_API_KEY;
-            let llmKey = getDecryptedKey('OpenAI') || getDecryptedKey('Google') || getDecryptedKey('Anthropic') || process.env.GROQ_API_KEY;
-            const ttsKey = getDecryptedKey('Cartesia') || getDecryptedKey('ElevenLabs') || getDecryptedKey('Sarvam') || process.env.CARTESIA_API_KEY;
+            /**
+             * Resolve one slot. Falls back to the platform's key only when it
+             * belongs to the same provider -- a credential is never handed to a
+             * vendor it was not issued for.
+             */
+            const resolveSlotKey = (credentialName, platformKey) =>
+                getDecryptedKey(credentialName) || platformKey || null;
+
+            const sttKey = resolveSlotKey('Deepgram', process.env.DEEPGRAM_API_KEY);
+            const ttsKey = resolveSlotKey('Cartesia', process.env.CARTESIA_API_KEY);
+
+            // The LLM slot is the only one with a choice, so its credential has to
+            // follow whichever endpoint llmModel selects.
+            const llmProvider = llmProviderFor(developerKey.pipelineConfig.llmModel);
+            const llmKey = resolveSlotKey(
+                LLM_CREDENTIAL_NAME[llmProvider],
+                llmProvider === 'groq' ? process.env.GROQ_API_KEY : null
+            );
+
+            if (!llmKey) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    code: 'missing_credential',
+                    message: `This key selects a ${llmProvider} model but has no ${llmProvider} credential. `
+                        + `Add one, or use a Groq model to run on the platform's key.`
+                }));
+                ws.close(1008, 'Missing provider credential');
+                return;
+            }
 
             // 1. STT Initialization
             deepgramService = new DeepgramService(sttKey);
@@ -170,12 +228,9 @@ export const setupDeveloperStreamWebSocket = () => {
                 channels: 1,
             });
 
-            // 2. TTS Initialization
-            if (developerKey.pipelineConfig.ttsModel === 'sarvam-aura') {
-                tts = new StreamingSarvamTTS('en-IN', 'anushka', false, 'latency'); // Sarvam doesn't use API key via param right now
-            } else {
-                tts = new StreamingCartesiaTTS('79a125e8-cd45-4c13-8a67-188112f4dd22', false, 'latency', ttsKey);
-            }
+            // 2. TTS Initialization. Cartesia is the only provider; the
+            //    ttsModel field on the key is not yet honoured (see README).
+            tts = new StreamingCartesiaTTS('79a125e8-cd45-4c13-8a67-188112f4dd22', false, 'latency', ttsKey);
 
             tts.on('audio', (audioData) => {
                 if (ws.readyState === ws.OPEN) {
@@ -187,6 +242,22 @@ export const setupDeveloperStreamWebSocket = () => {
             // 3. Conversation Flow
             let chatHistory = "";
             let isGenerating = false;
+
+            // Required, not optional: DeepgramService extends EventEmitter and
+            // emits 'error' on any post-open failure (an invalid BYOK key, for
+            // instance). With no listener, Node throws ERR_UNHANDLED_ERROR and
+            // the whole process dies. The sandbox path registers this; this one
+            // did not.
+            deepgramService.on('error', (error) => {
+                logger.error('Developer S2S Deepgram error', error);
+                if (ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        code: 'stt_failed',
+                        message: 'Speech recognition failed for this session.'
+                    }));
+                }
+            });
 
             deepgramService.on('finalTranscript', async (data) => {
                 if (isGenerating) return; // naive barge-in protection for demo
@@ -218,8 +289,11 @@ export const setupDeveloperStreamWebSocket = () => {
             });
 
             // 4. Ingest Audio
-            ws.on('message', (message) => {
-                if (Buffer.isBuffer(message)) {
+            // `isBinary` rather than Buffer.isBuffer: ws delivers text frames as
+            // Buffers too, so a type check would forward any JSON control
+            // message straight into the audio stream.
+            ws.on('message', (message, isBinary) => {
+                if (isBinary && message.length > 0) {
                     deepgramService.sendAudio(message);
                 }
             });

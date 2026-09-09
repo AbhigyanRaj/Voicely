@@ -54,7 +54,12 @@ router.get('/options', protect, (req, res) => {
  */
 router.get('/keys', protect, async (req, res) => {
   try {
-    const keys = await DeveloperKey.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    // Explicit projection. `select: false` on the schema already hides the hash
+    // and the credentials; naming the fields keeps it that way if the schema
+    // changes.
+    const keys = await DeveloperKey.find({ userId: req.user._id })
+      .select('name keyPrefix pipelineConfig createdAt updatedAt lastUsedAt')
+      .sort({ createdAt: -1 });
     res.json({ success: true, keys });
   } catch (error) {
     logger.error('Error fetching developer keys:', error);
@@ -93,7 +98,9 @@ router.post('/keys', protect, async (req, res) => {
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
 
     // Create a prefix for display purposes
-    const keyPrefix = `vk_dev_${token.substring(0, 4)}...${token.substring(token.length - 4)}`;
+    // Leading characters only. The previous form also exposed the token's *last*
+    // four, which is real key material shown in the UI and stored in the clear.
+    const keyPrefix = `vk_dev_${token.substring(0, 6)}...`;
 
     const newKey = await DeveloperKey.create({
       userId: req.user._id,
@@ -104,16 +111,28 @@ router.post('/keys', protect, async (req, res) => {
       providerCredentials: encryptedProviderCredentials
     });
 
-    // Test the pipeline latency
-    const actualLatency = await testPipelineLatency(pipelineConfig, PIPELINE_OPTIONS);
+    // Latency for this pipeline: the measured p50 of real turns when we have
+    // enough of them, otherwise a provider-ping estimate. `latencySource` says
+    // which, so the UI can stop calling an estimate "Tested".
+    const latency = await testPipelineLatency(pipelineConfig, PIPELINE_OPTIONS);
 
     // Send the raw key ONLY once. It cannot be retrieved again.
     res.json({
       success: true,
       message: 'API Key generated successfully',
       key: rawKey,
-      keyRecord: newKey,
-      actualLatency
+      // A public projection, not the document: the raw model carried keyHash and
+      // the encrypted providerCredentials map.
+      keyRecord: {
+        _id: newKey._id,
+        name: newKey.name,
+        keyPrefix: newKey.keyPrefix,
+        pipelineConfig: newKey.pipelineConfig,
+        createdAt: newKey.createdAt,
+      },
+      actualLatency: latency.latencyMs,
+      latencySource: latency.source,
+      latencySamples: latency.samples
     });
 
   } catch (error) {

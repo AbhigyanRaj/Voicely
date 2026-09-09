@@ -3,6 +3,7 @@ import Workspace from '../models/Workspace.js';
 import Call from '../models/Call.js';
 import { generateToken } from '../middleware/auth.js';
 import logger from '../utils/logger.js';
+import { verifyGoogleAccessToken } from '../utils/googleAuthVerify.js';
 
 /**
  * Helper: build the safe user response object
@@ -112,21 +113,35 @@ export const emailLogin = async (req, res) => {
  */
 export const googleAuth = async (req, res) => {
     try {
-        const { email, name, googleId } = req.body;
+        const { accessToken } = req.body;
 
-        if (!email || !name || !googleId) {
+        if (!accessToken || typeof accessToken !== 'string') {
+            // The old contract took { email, name, googleId } straight from the
+            // body and trusted it, which meant anyone could mint a session for
+            // any account. Identity is now established server-side from the
+            // token, so the client sends only the token.
             return res.status(400).json({
-                error: 'Missing required fields: email, name, and googleId are required'
+                error: 'Missing required field: accessToken'
             });
         }
+
+        let identity;
+        try {
+            identity = await verifyGoogleAccessToken(accessToken);
+        } catch (verifyError) {
+            return res
+                .status(verifyError.status || 401)
+                .json({ error: verifyError.message || 'Invalid Google credentials' });
+        }
+
+        const { email, name, googleId } = identity;
 
         let user = await User.findOne({ email: email.toLowerCase() });
 
         if (!user) {
-            const userName = name && name.trim() ? name.trim() : 'User';
             user = await User.create({
                 email: email.toLowerCase(),
-                name: userName,
+                name,
                 googleId,
             });
 
@@ -146,7 +161,7 @@ export const googleAuth = async (req, res) => {
                 needsUpdate = true;
             }
             if (!user.name || user.name.trim() === '') {
-                user.name = name && name.trim() ? name.trim() : 'User';
+                user.name = name;
                 needsUpdate = true;
             }
             if (needsUpdate) {

@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import mongoose from 'mongoose';
 import logger from './utils/logger.js';
+import latencyMetrics from './utils/latencyMetrics.js';
 
 // Load environment variables FIRST - with explicit path
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -28,8 +29,7 @@ if (!validateEnvironment()) {
 // Import database and utilities
 import connectDB from './config/database.js';
 import { getDBStatus } from './utils/dbUtils.js';
-import { initializeDatabase, checkDatabaseHealth, checkAudioDirectoryHealth } from './utils/initDB.js';
-import { initializeSharedAudioLibrary } from './services/audioCache.js';
+import { initializeDatabase } from './utils/initDB.js';
 import { initCache } from './utils/cacheUtils.js';
 
 // Import routes
@@ -41,11 +41,9 @@ import settingsRoutes from './routes/settings.js';
 import developerRoutes from './routes/developer.js';
 import apiRoutes from './routes/api.js';
 import { setupMediaStreamWebSocket } from './controllers/mediaStreamController.js';
-import { initializeLiveCallWebSocket } from './websocket/liveCallServer.js';
-import { initScheduler } from './services/schedulerService.js';
+import { initializeLiveCallWebSocket, getLiveCallStateSize } from './websocket/liveCallServer.js';
 import http from 'http';
 import statsRoutes from './routes/stats.js';
-import leadsRoutes from './routes/leads.js';
 
 
 const app = express();
@@ -135,41 +133,45 @@ const startServer = async () => {
     // Start Database and Services
     logger.info('Initializing services...');
     await connectDB();
-    await initializeDatabase();
+    // The return value used to be discarded, so an index-creation failure or an
+    // unwritable audio directory booted a half-initialised server anyway.
+    if (!(await initializeDatabase())) {
+      throw new Error('Database initialization failed');
+    }
     await initCache();
 
     // Log configuration status
     logger.info('Service Configuration:');
-    logger.info(`Google TTS: ${process.env.GOOGLE_TTS_API_KEY ? 'Enabled' : 'Disabled'}`);
-    logger.info(`ElevenLabs: ${process.env.ELEVENLABS_API_KEY ? 'Enabled' : 'Disabled'}`);
+    logger.info(`STT (Deepgram): ${process.env.DEEPGRAM_API_KEY ? 'Enabled' : 'Disabled'}`);
+    logger.info(`LLM (Groq): ${process.env.GROQ_API_KEY ? 'Enabled' : 'Disabled'}`);
+    logger.info(`TTS (Cartesia): ${process.env.CARTESIA_API_KEY ? 'Enabled' : 'Disabled'}`);
     logger.info(`Environment: ${process.env.NODE_ENV}`);
-
-    // Initialize shared audio library (only if ElevenLabs API key is set)
-    // This will check cache first, so it won't regenerate existing audio
-    if (process.env.ELEVENLABS_API_KEY) {
-      logger.info('Initializing shared audio library...');
-      try {
-        await initializeSharedAudioLibrary('RACHEL'); // Assuming seedAudioLibrary was a typo in the instruction and initializeSharedAudioLibrary is the correct function.
-        logger.success('Shared audio library ready');
-      } catch (error) {
-        logger.error('Failed to initialize shared audio library', error);
-      }
-    } else {
-      logger.warn('ELEVENLABS_API_KEY not set - skipping audio library initialization');
-    }
 
     // Initialize WebSocket servers in noServer mode
     const mediaStreamWss = setupMediaStreamWebSocket();
     const liveCallWss = initializeLiveCallWebSocket();
     const developerStreamWss = (await import('./websocket/developerStreamServer.js')).setupDeveloperStreamWebSocket();
 
-    // Handle manual WebSocket upgrade dispatching
+    // Handle manual WebSocket upgrade dispatching.
+    //
+    // Wrapped: this runs inside an 'upgrade' listener, so anything that throws
+    // here -- a malformed request.url reaching new URL(), for instance -- is an
+    // uncaught exception that takes down the process and every live session with
+    // it.
     httpServer.on('upgrade', (request, socket, head) => {
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const pathname = url.pathname;
+      let pathname;
+      try {
+        pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+      } catch (err) {
+        logger.warn(`Rejected WebSocket upgrade with unparseable URL: ${err.message}`);
+        socket.destroy();
+        return;
+      }
       logger.info(`WebSocket Upgrade Request: [Path: ${pathname}] [Host: ${request.headers.host}]`);
 
-      if (pathname === '/api/streams/twilio' || pathname === '/api/streams/browser') {
+      try {
+
+      if (pathname === '/api/streams/browser') {
         mediaStreamWss.handleUpgrade(request, socket, head, (ws) => {
           mediaStreamWss.emit('connection', ws, request);
         });
@@ -185,11 +187,12 @@ const startServer = async () => {
         logger.warn(`Rejected WebSocket upgrade for unknown path: ${pathname}`);
         socket.destroy();
       }
+      } catch (err) {
+        logger.error('WebSocket upgrade dispatch failed', err);
+        socket.destroy();
+      }
     });
 
-
-    // Initialize Intelligent Call Scheduler
-    initScheduler();
 
     // Start the server
     httpServer.listen(PORT, '0.0.0.0', () => {
@@ -217,6 +220,17 @@ const startServer = async () => {
     process.on('SIGTERM', gracefulShutdown);
     process.on('SIGINT', gracefulShutdown);
 
+    // Last-resort safety net. Without these, one unhandled EventEmitter 'error'
+    // -- a provider socket failing mid-session, say -- terminated the process and
+    // dropped every other live session with it. Log and keep serving; a truly
+    // corrupt process is better handled by the platform's health check.
+    process.on('uncaughtException', (err) => {
+      logger.error('UNCAUGHT EXCEPTION (server continuing)', err);
+    });
+    process.on('unhandledRejection', (reason) => {
+      logger.error('UNHANDLED REJECTION (server continuing)', reason);
+    });
+
     // Nodemon restart handler
     process.once('SIGUSR2', () => {
       httpServer.close(() => {
@@ -238,66 +252,47 @@ app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/developer', developerRoutes);
 app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v1', apiRoutes);
-app.use('/api/v1/leads', leadsRoutes);
 
 // Health check with detailed database info
 app.get('/api/v1/health', async (req, res) => {
+  // Liveness only. This used to return checkDatabaseHealth(), which includes
+  // every collection name and db.stats() -- an unauthenticated inventory of the
+  // database. The detail is still available to an operator via the logs.
   try {
-    const dbHealth = await checkDatabaseHealth();
-    const audioHealth = await checkAudioDirectoryHealth();
-
-    res.json({
-      status: 'OK',
-      message: 'Voicely API is running',
-      database: dbHealth,
-      audio: audioHealth,
-      system: {
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        load: os.loadavg()
-      },
+    const connected = getDBStatus() === 'connected';
+    res.status(connected ? 200 : 503).json({
+      status: connected ? 'OK' : 'DEGRADED',
+      database: connected ? 'connected' : getDBStatus(),
+      uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV
     });
   } catch (error) {
-    res.status(500).json({
-      status: 'ERROR',
-      message: 'Health check failed',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
+    res.status(503).json({ status: 'ERROR', timestamp: new Date().toISOString() });
   }
 });
 
-// Latency Metrics Endpoint (7.4)
+// Latency and process metrics.
+//
+// `latency` holds p50/p90/p95/p99/p100 per stage of the voice pipeline. The
+// headline number is `turn.mouth_to_ear`: the user stopped speaking, and the
+// first audio of the reply reached the wire. Everything else decomposes it.
+//
+// Percentiles are computed over the most recent 1000 samples of each metric;
+// `count` is the lifetime total, `window` is how many the percentiles used.
 app.get('/api/v1/metrics', (req, res) => {
+  // Latency stays public on purpose: it is the number the product claims, and a
+  // claim you can verify is worth more than one you cannot. The process
+  // fingerprint that used to sit here -- pid, rss, heap, loadavg, cpu count --
+  // told an attacker about the host and nothing about the pipeline.
   res.json({
-    uptime: process.uptime(),
-    memory: {
-      rss: process.memoryUsage().rss,
-      heapTotal: process.memoryUsage().heapTotal,
-      heapUsed: process.memoryUsage().heapUsed,
-    },
-    cpu: {
-      loadAvg: os.loadavg(),
-      cpus: os.cpus().length
-    },
-    pid: process.pid
+    uptime: Math.round(process.uptime()),
+    latency: latencyMetrics.snapshotAll(),
+    counters: latencyMetrics.counterSnapshot(),
+    // Should return to zero between sessions; a climbing number is a leak.
+    liveState: getLiveCallStateSize(),
   });
 });
 
-// Database status endpoint
-app.get('/api/db/status', async (req, res) => {
-  try {
-    const dbHealth = await checkDatabaseHealth();
-    res.json(dbHealth);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Failed to get database status',
-      message: error.message
-    });
-  }
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

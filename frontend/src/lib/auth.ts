@@ -1,3 +1,4 @@
+import { DEFAULT_VOICE_ID, DEFAULT_LANGUAGE, TTS_PROVIDER } from './ttsConfig';
 import { getApiBaseUrl } from './api';
 
 // JWT-based authentication with Google OAuth
@@ -53,16 +54,22 @@ export const removeStoredUser = () => {
   localStorage.removeItem('vokai_user');
 };
 
-// Google OAuth authentication
-export const signInWithGoogle = async (googleUser: { email: string; name: string; sub: string }): Promise<AuthResponse> => {
+/**
+ * Google OAuth. Sends only the access token: the server calls Google itself to
+ * establish who it belongs to. Posting the profile claims from here, as this
+ * used to, let anyone request a session for any email.
+ */
+export const signInWithGoogle = async (accessToken: string): Promise<AuthResponse> => {
   try {
-    const { email, name, sub: googleId } = googleUser;
     const response = await fetch(`${getApiBaseUrl()}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name, googleId }),
+      body: JSON.stringify({ accessToken }),
     });
-    if (!response.ok) throw new Error('Authentication failed');
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'Authentication failed');
+    }
     const authResponse: AuthResponse = await response.json();
     if (authResponse.success && authResponse.token) {
       setStoredToken(authResponse.token);
@@ -127,14 +134,6 @@ export const getCurrentUser = (): User | null => {
   return getStoredUser();
 };
 
-export const onAuthStateChange = (callback: (user: User | null) => void) => {
-  // For now, just call with current user
-  const user = getCurrentUser();
-  callback(user);
-
-  // Return a cleanup function
-  return () => { };
-};
 
 // User profile functions
 export const getUserProfile = async (): Promise<User | null> => {
@@ -160,66 +159,8 @@ export const getUserProfile = async (): Promise<User | null> => {
   }
 };
 
-export const createUserProfile = async (): Promise<void> => {
-  // This is handled by the backend during Google OAuth
-};
 
-export const incrementUserTokens = async (amount: number): Promise<void> => {
-  const token = getStoredToken();
-  if (!token) return;
 
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/auth/buy-tokens`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ amount }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      // Update stored user with new token balance
-      const currentUser = getStoredUser();
-      if (currentUser) {
-        currentUser.tokens = data.newBalance;
-        setStoredUser(currentUser);
-      }
-    }
-  } catch (error) {
-    console.error('Error incrementing tokens:', error);
-  }
-};
-
-export const upgradePlan = async (tier: string): Promise<User | null> => {
-  const token = getStoredToken();
-  if (!token) return null;
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/auth/upgrade-plan`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ tier }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      // Update stored user with new subscription
-      if (data.user) {
-        setStoredUser(data.user);
-        return data.user;
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error('Error upgrading plan:', error);
-    return null;
-  }
-};
 
 // Module management functions
 export interface VoiceModule {
@@ -236,6 +177,7 @@ export interface VoiceModule {
   systemPrompt?: string;
   ttsProvider?: string;
   selectedLanguage?: string;
+  selectedVoice?: string;
   createdAt: number;
 }
 
@@ -254,9 +196,11 @@ export const addVoiceModule = async (name: string, questions: string[], systemPr
         name,
         type: 'custom', // Specify the module type
         systemPrompt: systemPrompt || '',
-        ttsProvider: ttsProvider || 'google',
-        selectedLanguage: selectedLanguage || 'en-IN',
-        selectedVoice: selectedVoice || 'NEERJA',
+        ttsProvider: ttsProvider || TTS_PROVIDER,
+        selectedLanguage: selectedLanguage || DEFAULT_LANGUAGE,
+        // 'NEERJA' was a Google voice name; Cartesia rejects it as a voice id and
+        // the session then plays no audio.
+        selectedVoice: selectedVoice || DEFAULT_VOICE_ID,
         questions: questions.map((question, index) => ({
           question: question.trim(),
           order: index,
@@ -302,6 +246,7 @@ export const getUserModules = async (): Promise<VoiceModule[]> => {
         systemPrompt?: string;
         ttsProvider?: string;
         selectedLanguage?: string;
+        selectedVoice?: string;
         questions: Array<{
           question: string;
           order: number;
@@ -316,7 +261,10 @@ export const getUserModules = async (): Promise<VoiceModule[]> => {
         name: module.name,
         systemPrompt: module.systemPrompt || '',
         ttsProvider: module.ttsProvider || 'google',
-        selectedLanguage: module.selectedLanguage || 'en-IN',
+        selectedLanguage: module.selectedLanguage || DEFAULT_LANGUAGE,
+        // This was dropped here, so the sandbox and the campaign uploader both
+        // read undefined and fell back to a default voice for custom agents.
+        selectedVoice: module.selectedVoice,
         questions: module.questions || [],
         createdAt: new Date(module.createdAt).getTime()
       }));

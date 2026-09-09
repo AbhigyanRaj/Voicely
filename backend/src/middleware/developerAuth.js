@@ -25,7 +25,9 @@ export const developerAuth = async (req, res, next) => {
     const keyHash = crypto.createHash('sha256').update(token).digest('hex');
 
     // Find the developer key in DB
-    const developerKey = await DeveloperKey.findOne({ keyHash });
+    // providerCredentials is select:false on the schema; handlers behind this
+    // middleware need it, so select it explicitly.
+    const developerKey = await DeveloperKey.findOne({ keyHash }).select('+providerCredentials');
 
     if (!developerKey) {
       return res.status(401).json({ success: false, error: 'Not authorized to access this route. Key not found or revoked.' });

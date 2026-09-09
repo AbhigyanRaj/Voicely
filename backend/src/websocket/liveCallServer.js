@@ -81,29 +81,10 @@ export function initializeLiveCallWebSocket(server = null) {
       message: 'Connected to live call transcript'
     }));
 
-    // Handle incoming messages from the client (e.g., Manual Intervention)
-    ws.on('message', async (data) => {
-      try {
-        const message = JSON.parse(data);
-        if (message.type === 'manual_intervention') {
-          const { text } = message;
-          logger.info(`Received manual intervention for call ${callId}: "${text}"`);
-          
-          // Import mediaStream dynamically to avoid circular dependencies
-          const { handleManualIntervention } = await import('../controllers/mediaStreamController.js');
-          await handleManualIntervention(callId, text);
-          
-          // Acknowledge intervention
-          ws.send(JSON.stringify({
-            type: 'intervention_acknowledged',
-            timestamp: new Date().toISOString(),
-            text: text
-          }));
-        }
-      } catch (err) {
-        logger.error(`Error handling LiveCall message for call ${callId}:`, err);
-      }
-    });
+    // This socket is read-only: it streams transcript updates out. The manual
+    // intervention path it used to accept belonged to the live-call dashboard,
+    // which went away with the campaign features.
+    ws.on('message', () => {});
 
     // Handle client disconnect
     ws.on('close', () => {
@@ -268,8 +249,8 @@ export function broadcastCallStatus(callId, status, metadata = {}) {
  */
 export function cleanupCallClients(callId) {
   const clients = liveCallClients.get(callId);
+
   if (clients) {
-    // Send final message before cleanup
     const finalMessage = JSON.stringify({
       type: 'call_completed',
       callId: callId,
@@ -289,9 +270,24 @@ export function cleanupCallClients(callId) {
     });
 
     liveCallClients.delete(callId);
-    callStates.delete(callId); // Clean up state as well
-    logger.info(`Cleaned up all LiveCall clients and state for completed call: ${callId}`);
   }
+
+  // Outside the client check on purpose. broadcastTranscriptUpdate creates a
+  // callStates entry for every session whether or not anyone is watching (see
+  // the comment at its top), so leaving this inside `if (clients)` meant any
+  // unwatched session -- every API and widget session, and the sandbox whenever
+  // the transcript socket fails -- kept its full transcript history for the
+  // lifetime of the process.
+  const hadState = callStates.delete(callId);
+
+  if (clients || hadState) {
+    logger.debug(`Cleaned up LiveCall clients and state for completed call: ${callId}`);
+  }
+}
+
+/** Live map sizes. Exposed so a leak is observable rather than inferred. */
+export function getLiveCallStateSize() {
+  return { callStates: callStates.size, callsWithClients: liveCallClients.size };
 }
 
 /**

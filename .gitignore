@@ -48,3 +48,9 @@ backend/**/*.flac
 
 # Backend test env files
 backend/.env.*
+
+# Local env files with real credentials (keep *.env.example tracked)
+Voicely-api.env
+*-api.env
+/*.env
+!*.env.example
