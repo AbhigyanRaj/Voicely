@@ -1,0 +1,62 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1180, "h": 820, "title": "1 · Today — first run" },
+    { "file": "TodayActive.dc.html", "x": 1300, "y": 0, "w": 1180, "h": 820, "title": "2 · Today — with data" },
+    { "file": "Conversations.dc.html", "x": 2600, "y": 0, "w": 1180, "h": 820, "title": "3 · Conversations" },
+    { "file": "ConversationDetail.dc.html", "x": 0, "y": 1000, "w": 1180, "h": 820, "title": "4 · Conversation detail" },
+    { "file": "ScriptEditor.dc.html", "x": 1300, "y": 1000, "w": 1180, "h": 820, "title": "5 · Script editor" },
+    { "file": "TestCall.dc.html", "x": 2600, "y": 1000, "w": 1180, "h": 820, "title": "6 · Test a call" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -240,
+      "w": 560,
+      "text": "The signed-in product: prove it works.\n\nBuild your agent → call it yourself with real borrower context → see exactly what it captured. Everything here is real data from real test calls; there is no dialling yet, so there is no Runs screen and no invented pipeline numbers.\n\nRead the top row left to right — that is the journey."
+    },
+    {
+      "id": "n1",
+      "x": 0,
+      "y": 880,
+      "w": 420,
+      "text": "1 · FIRST RUN\nThe most important screen in the product, and usually the worst one anywhere.\n\nThe band carries the next step instead of a statistic. The three steps are numbered because this genuinely is a sequence — not decoration."
+    },
+    {
+      "id": "n2",
+      "x": 1300,
+      "y": 880,
+      "w": 420,
+      "text": "2 · TODAY, WITH DATA\nThe old ops funnel (queued → dialled → connected) is gone: without dialling it would be theatre.\n\nWhat replaced it is how your agent is actually doing — promises captured, right-person rate, what still needs a human."
+    },
+    {
+      "id": "n3",
+      "x": 2600,
+      "y": 880,
+      "w": 420,
+      "text": "3 · CONVERSATIONS\nThe dense one. Every row carries the borrower's own sentence as a second line — a call centre gives you a disposition code, this gives you what they said.\n\nVermilion appears only where a person has to act."
+    },
+    {
+      "id": "n4",
+      "x": 0,
+      "y": 1880,
+      "w": 420,
+      "text": "4 · DETAIL — THE CENTREPIECE\nEvery captured field points back at the line that produced it: the promise date says \"from अठारह तारीख को सैलरी आएगी\", and that line is marked in the transcript.\n\nThis is the trust mechanism. A collections head has to believe the extraction before they will act on it."
+    },
+    {
+      "id": "n5",
+      "x": 1300,
+      "y": 1880,
+      "w": 420,
+      "text": "5 · SCRIPT EDITOR\nShown as the conversation it produces, not as a form. Labels are plain questions — \"Opens with\", \"Who it is\" — never \"System Prompt\".\n\nThe right rail states the compliance rules that are NOT the user's to edit, rather than hiding them. Test is one click, in place."
+    },
+    {
+      "id": "n6",
+      "x": 2600,
+      "y": 1880,
+      "w": 420,
+      "text": "6 · TEST A CALL\nBorrower context is the change here: loan, amount, due date. The agent can then say the real figure instead of something vague — and these are exactly the fields a borrower list will carry later, so none of it is throwaway.\n\nReachable from a script, from Today, and from the header."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Archivo:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Archivo', system-ui, sans-serif; color: #14110F; }
+    a { color: #C8452D; } a:hover { color: #9E3423; }
+    .d { font-family: 'Bodoni Moda', Georgia, serif; }
+    .dev { font-family: 'Noto Serif Devanagari', serif; }
+    .n { font-variant-numeric: tabular-nums; }
+    .field { border: 1px solid #E3DDD4; border-radius: 3px; padding: 9px 12px; background: #fff; font-size: 15px; }
+    .lab { font-size: 12px; color: #8C857D; margin-bottom: 5px; display: block; }
+  </style>
+</helmet>
+
+<!-- A dialog over the product, not a marketing modal. It is reachable from a
+     script, from Today, and from the header. -->
+<div style="width: 1180px; height: 820px; background: #E8E4DC; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+
+  <div style="width: 880px; background: #FBFAF7; border: 1px solid #CFC7BA; border-radius: 4px; display: flex; overflow: hidden;">
+
+    <!-- left: who you are pretending to be -->
+    <div style="width: 400px; padding: 28px 30px; border-right: 1px solid #E3DDD4; flex-shrink: 0;">
+      <div class="d" style="font-size: 22px; font-weight: 600; margin-bottom: 4px;">Test this agent</div>
+      <div style="font-size: 13px; color: #59524B; line-height: 1.5; margin-bottom: 22px;">
+        You’ll be the borrower. Give it the details a real call would carry, so it
+        can name the actual amount rather than something vague.
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <span class="lab">Borrower name</span>
+          <div class="field">Ramesh Kumar</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <span class="lab">Loan</span>
+            <div class="field n">LN-44718</div>
+          </div>
+          <div>
+            <span class="lab">Amount due</span>
+            <div class="field n">₹4,820</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <span class="lab">Was due</span>
+            <div class="field n">10 Sep</div>
+          </div>
+          <div>
+            <span class="lab">Days late</span>
+            <div class="field n" style="color: #D98B45;">3 · bucket 0</div>
+          </div>
+        </div>
+
+        <div>
+          <span class="lab">Language</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="dev" style="border: 1px solid #14110F; padding: 5px 11px; border-radius: 3px; font-size: 14px;">हिन्दी</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 5px 11px; border-radius: 3px; font-size: 14px; color: #59524B;">मराठी</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 5px 11px; border-radius: 3px; font-size: 14px; color: #59524B;">தமிழ்</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 5px 11px; border-radius: 3px; font-size: 14px; color: #59524B;">తెలుగు</span>
+            <span style="border: 1px solid #E3DDD4; padding: 5px 11px; border-radius: 3px; font-size: 14px; color: #59524B;">English</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- right: mic, then what to try -->
+    <div style="flex-grow: 1; padding: 28px 30px; display: flex; flex-direction: column;">
+
+      <div style="border: 1px solid #E3DDD4; border-radius: 3px; padding: 12px 14px; margin-bottom: 20px; background: #fff;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7a4 4 0 108 0M7 1a2 2 0 00-2 2v4a2 2 0 004 0V3a2 2 0 00-2-2zM7 11v2" stroke="#3F7D5C" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span style="font-size: 14px; color: #3F7D5C; font-weight: 500;">We can hear you</span>
+        </div>
+        <div style="height: 3px; background: #F4F1EB; border-radius: 2px; margin-top: 9px; overflow: hidden;">
+          <div style="width: 62%; height: 100%; background: #3F7D5C;"></div>
+        </div>
+      </div>
+
+      <div style="font-size: 14px; font-weight: 600; margin-bottom: 3px;">Things worth trying</div>
+      <div style="font-size: 13px; color: #8C857D; margin-bottom: 14px;">Each one tests something different. Say it out loud.</div>
+
+      <div style="display: flex; flex-direction: column; gap: 9px; flex-grow: 1;">
+        <div style="border: 1px solid #E3DDD4; border-radius: 3px; padding: 11px 13px; background: #fff;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Promise a date</span>
+            <span style="font-size: 11px; color: #8C857D;">the core outcome</span>
+          </div>
+          <p class="dev" style="margin: 5px 0 0; font-size: 14px; color: #59524B;">अठारह तारीख को सैलरी आएगी, तब कर दूंगा</p>
+        </div>
+
+        <div style="border: 1px solid #E3DDD4; border-radius: 3px; padding: 11px 13px; background: #fff;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Say you already paid</span>
+            <span style="font-size: 11px; color: #8C857D;">should stop collecting</span>
+          </div>
+          <p class="dev" style="margin: 5px 0 0; font-size: 14px; color: #59524B;">मैंने दो तारीख को ही पेमेंट कर दिया था</p>
+        </div>
+
+        <div style="border: 1px solid #E3DDD4; border-radius: 3px; padding: 11px 13px; background: #fff;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Say you lost your job</span>
+            <span style="font-size: 11px; color: #C8452D;">must escalate</span>
+          </div>
+          <p class="dev" style="margin: 5px 0 0; font-size: 14px; color: #59524B;">मेरी नौकरी चली गई है, अभी कुछ नहीं कर सकता</p>
+        </div>
+
+        <div style="border: 1px solid #E3DDD4; border-radius: 3px; padding: 11px 13px; background: #fff;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Interrupt it</span>
+            <span style="font-size: 11px; color: #8C857D;">cut in mid-sentence</span>
+          </div>
+          <p class="dev" style="margin: 5px 0 0; font-size: 14px; color: #59524B;">सुनिए, एक मिनट रुकिए</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; margin-top: 20px;">
+        <div style="background: #C8452D; color: #FBFAF7; padding: 11px 22px; border-radius: 3px; font-size: 14px; font-weight: 600;">Start the call</div>
+        <span class="n" style="font-size: 13px; color: #8C857D;">60 seconds</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

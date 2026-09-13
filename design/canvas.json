@@ -1,0 +1,38 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 900, "h": 640, "title": "A — Khata" },
+    { "file": "DirectionB.dc.html", "x": 1000, "y": 0, "w": 900, "h": 640, "title": "B — Switchboard" },
+    { "file": "DirectionC.dc.html", "x": 2000, "y": 0, "w": 900, "h": 640, "title": "C — Signal" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -190,
+      "w": 420,
+      "text": "Same screen, three aesthetics.\nCollections desk for an Indian lender — voice agent calls borrowers in Hindi/Tamil/Marathi about overdue EMIs.\nIdentical data in all three so the comparison is fair."
+    },
+    {
+      "id": "note-a",
+      "x": 0,
+      "y": 700,
+      "w": 400,
+      "text": "A — KHATA\nThe traditional Indian ledger: buff paper, lac red, ruled lines instead of cards. A collections book is a khata, so the product looks like one.\n\nFor: distinctive, calm to read for hours, rules encode structure without boxing everything.\nAgainst: light UI is unusual for an ops tool; risks reading as nostalgic if pushed further."
+    },
+    {
+      "id": "note-b",
+      "x": 1000,
+      "y": 700,
+      "w": 400,
+      "text": "B — SWITCHBOARD\nTelephony operations. Sodium-lamp amber on near-black, mono throughout, live waveform per call.\n\nFor: highest density, reads as serious infrastructure, the waveform makes it unmistakably a voice product.\nAgainst: closest to a conventional dark dashboard — the safe choice, and the least memorable."
+    },
+    {
+      "id": "note-c",
+      "x": 2000,
+      "y": 700,
+      "w": 400,
+      "text": "C — SIGNAL\nThe borrower's own sentence is the headline, set large in its own script. Editorial: Bodoni, deep black band, one vermilion accent.\n\nFor: puts the thing no call centre gives you — what the borrower actually said — at the centre. Most striking in a demo.\nAgainst: lowest density; a manager wanting 50 rows at a glance will fight it."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Archivo:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Archivo', system-ui, sans-serif; color: #14110F; }
+    a { color: #C8452D; } a:hover { color: #9E3423; }
+    .d { font-family: 'Bodoni Moda', Georgia, serif; }
+    .dev { font-family: 'Noto Serif Devanagari', serif; }
+    .n { font-variant-numeric: tabular-nums; }
+    .row { display: grid; grid-template-columns: 68px 1fr 96px 128px 150px 58px; gap: 16px;
+           padding: 13px 0; border-bottom: 1px solid #E3DDD4; align-items: baseline; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 820px; background: #FBFAF7; display: flex; box-sizing: border-box;">
+
+  <div style="width: 180px; border-right: 1px solid #E3DDD4; display: flex; flex-direction: column; flex-shrink: 0;">
+    <div style="padding: 22px 24px 18px;"><span class="d" style="font-size: 18px; font-weight: 600;">Voicely</span></div>
+    <div style="padding: 0 10px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Today</div>
+      <div style="padding: 7px 14px; border-radius: 3px; background: #F4F1EB; font-size: 15px; font-weight: 500;">Conversations</div>
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Scripts</div>
+    </div>
+    <div style="margin-top: auto; padding: 14px 24px; border-top: 1px solid #E3DDD4;">
+      <div style="font-size: 15px; color: #59524B; margin-bottom: 10px;">Settings</div>
+      <div style="font-size: 13px; color: #8C857D;">priya@lender.in</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div style="display: flex; align-items: baseline; gap: 14px; padding: 26px 36px 16px;">
+      <span class="d" style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em;">Conversations</span>
+      <span class="n" style="font-size: 13px; color: #8C857D;">12 calls</span>
+    </div>
+
+    <!-- filters: plain words, not chips shouting in caps -->
+    <div style="display: flex; gap: 8px; padding: 0 36px 16px; align-items: center;">
+      <div style="border: 1px solid #14110F; padding: 5px 12px; border-radius: 3px; font-size: 13px;">All</div>
+      <div style="border: 1px solid #E3DDD4; padding: 5px 12px; border-radius: 3px; font-size: 13px; color: #59524B;">Promised</div>
+      <div style="border: 1px solid #E3DDD4; padding: 5px 12px; border-radius: 3px; font-size: 13px; color: #C8452D;">Needs a person · 3</div>
+      <div style="width: 1px; height: 18px; background: #E3DDD4; margin: 0 4px;"></div>
+      <div style="border: 1px solid #E3DDD4; padding: 5px 12px; border-radius: 3px; font-size: 13px; color: #59524B;">Any language</div>
+    </div>
+
+    <div style="padding: 0 36px; flex-grow: 1; min-height: 0;">
+
+      <div class="row" style="border-bottom: 1px solid #14110F; padding-bottom: 8px;">
+        <span style="font-size: 12px; color: #8C857D;">When</span>
+        <span style="font-size: 12px; color: #8C857D;">Borrower</span>
+        <span style="font-size: 12px; color: #8C857D;">Language</span>
+        <span style="font-size: 12px; color: #8C857D;">Outcome</span>
+        <span style="font-size: 12px; color: #8C857D;">Captured</span>
+        <span style="font-size: 12px; color: #8C857D; text-align: right;">Length</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:22</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px;">Ramesh Kumar <span class="n" style="font-size: 12px; color: #8C857D; margin-left: 6px;">LN-44718 · ₹4,820</span></div>
+          <p class="dev" style="margin: 3px 0 0; font-size: 13px; color: #59524B; line-height: 1.4;">अठारह तारीख को सैलरी आएगी, तब कर दूंगा</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #59524B;">हिन्दी</span>
+        <span style="font-size: 13px; color: #3F7D5C;">Promised to pay</span>
+        <span class="n" style="font-size: 13px;">18 Sep · ₹4,820</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">52s</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:19</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px;">M. Lakshmi <span class="n" style="font-size: 12px; color: #8C857D; margin-left: 6px;">LN-50881 · ₹15,200</span></div>
+          <p style="margin: 3px 0 0; font-size: 13px; color: #59524B; line-height: 1.4;">I already paid this on the 2nd, check again</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #59524B;">தமிழ்</span>
+        <span style="font-size: 13px; color: #C8452D;">Disputes amount</span>
+        <span style="font-size: 13px; color: #C8452D;">Needs a person</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">88s</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:17</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px;">Vikas Patil <span class="n" style="font-size: 12px; color: #8C857D; margin-left: 6px;">LN-47730 · ₹2,900</span></div>
+          <p class="dev" style="margin: 3px 0 0; font-size: 13px; color: #59524B; line-height: 1.4;">हो, परवा करतो</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #59524B;">मराठी</span>
+        <span style="font-size: 13px; color: #3F7D5C;">Promised to pay</span>
+        <span class="n" style="font-size: 13px;">15 Sep · ₹2,900</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">34s</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:15</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px;">Rahul Bose <span class="n" style="font-size: 12px; color: #8C857D; margin-left: 6px;">LN-52214 · ₹21,500</span></div>
+          <p style="margin: 3px 0 0; font-size: 13px; color: #59524B; line-height: 1.4;">Job chole gechhe, ekhon kichhu korte parbo na</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #59524B;">বাংলা</span>
+        <span style="font-size: 13px; color: #C8452D;">Hardship</span>
+        <span style="font-size: 13px; color: #C8452D;">Needs a person</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">121s</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:12</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px;">Geeta Verma <span class="n" style="font-size: 12px; color: #8C857D; margin-left: 6px;">LN-41985 · ₹5,100</span></div>
+          <p class="dev" style="margin: 3px 0 0; font-size: 13px; color: #59524B; line-height: 1.4;">अभी ढाई हज़ार दे सकती हूँ</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #59524B;">हिन्दी</span>
+        <span style="font-size: 13px; color: #D98B45;">Promised part</span>
+        <span class="n" style="font-size: 13px;">16 Sep · ₹2,500</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">67s</span>
+      </div>
+
+      <div class="row">
+        <span class="n" style="font-size: 13px; color: #8C857D;">14:06</span>
+        <div style="min-width: 0;">
+          <div style="font-size: 15px; color: #8C857D;">Unknown <span class="n" style="font-size: 12px; margin-left: 6px;">LN-46621 · ₹3,400</span></div>
+          <p class="dev" style="margin: 3px 0 0; font-size: 13px; color: #8C857D; line-height: 1.4;">ये नंबर गलत है, मैं नहीं हूँ</p>
+        </div>
+        <span class="dev" style="font-size: 13px; color: #8C857D;">हिन्दी</span>
+        <span style="font-size: 13px; color: #8C857D;">Wrong number</span>
+        <span style="font-size: 13px; color: #8C857D;">—</span>
+        <span class="n" style="font-size: 13px; color: #8C857D; text-align: right;">14s</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

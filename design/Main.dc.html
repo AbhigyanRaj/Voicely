@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Tiro+Devanagari+Hindi:ital@0;1&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Source Serif 4', Georgia, serif; }
+    a { color: #9E2B25; } a:hover { color: #7A1F1A; }
+    .dev { font-family: 'Tiro Devanagari Hindi', 'Source Serif 4', serif; }
+    .fig { font-variant-numeric: tabular-nums lining-nums; }
+  </style>
+</helmet>
+
+<div style="width: 900px; height: 640px; background: #F0E8D8; color: #2B2622; padding: 34px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+
+  <div style="display: flex; align-items: baseline; gap: 14px; border-bottom: 2px solid #2B2622; padding-bottom: 8px;">
+    <span style="font-size: 27px; font-weight: 600; letter-spacing: -0.01em;">Collections</span>
+    <span class="fig" style="font-size: 14px; color: #7A6E5E;">Thursday, 13 September</span>
+    <span style="font-size: 14px; font-style: italic; color: #7A6E5E; margin-left: auto;">calling 10.00 to 18.00</span>
+  </div>
+
+  <div style="display: flex; gap: 40px; align-items: baseline; border-bottom: 1px solid #D8CCB4; padding-bottom: 16px;">
+    <div>
+      <div class="fig" style="font-size: 38px; font-weight: 600; line-height: 1;">8,902</div>
+      <div style="font-size: 13px; font-style: italic; color: #7A6E5E; margin-top: 3px;">dialled</div>
+    </div>
+    <div>
+      <div class="fig" style="font-size: 38px; font-weight: 600; line-height: 1;">5,140</div>
+      <div style="font-size: 13px; font-style: italic; color: #7A6E5E; margin-top: 3px;">connected</div>
+    </div>
+    <div>
+      <div class="fig" style="font-size: 38px; font-weight: 600; line-height: 1; color: #9E2B25;">1,284</div>
+      <div style="font-size: 13px; font-style: italic; color: #7A6E5E; margin-top: 3px;">promised to pay</div>
+    </div>
+    <div style="margin-left: auto; text-align: right;">
+      <div class="fig" style="font-size: 38px; font-weight: 600; line-height: 1;">₹84,20,000</div>
+      <div style="font-size: 13px; font-style: italic; color: #7A6E5E; margin-top: 3px;">recovered against promises</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; flex-grow: 1; min-height: 0;">
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: #9E2B25; display: inline-block;"></span>
+        <span style="font-size: 15px; font-weight: 600;">On the line now</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: grid; grid-template-columns: 1fr 62px 56px; gap: 10px; font-size: 12px; font-style: italic; color: #7A6E5E; padding-bottom: 5px; border-bottom: 1px solid #2B2622;">
+          <span>borrower</span><span style="text-align: right;">due</span><span style="text-align: right;">elapsed</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 62px 56px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #D8CCB4; align-items: baseline;">
+          <div><span class="dev" style="font-size: 15px;">रमेश कुमार</span><span class="fig" style="font-size: 12px; color: #7A6E5E; margin-left: 7px;">LN-44718</span></div>
+          <span class="fig" style="text-align: right; font-size: 14px;">₹4,820</span>
+          <span class="fig" style="text-align: right; font-size: 14px; color: #9E2B25;">0.38</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 62px 56px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #D8CCB4; align-items: baseline;">
+          <div><span style="font-size: 15px;">S. Karthik</span><span class="fig" style="font-size: 12px; color: #7A6E5E; margin-left: 7px;">LN-51903</span></div>
+          <span class="fig" style="text-align: right; font-size: 14px;">₹12,400</span>
+          <span class="fig" style="text-align: right; font-size: 14px; color: #9E2B25;">0.12</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 62px 56px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #D8CCB4; align-items: baseline;">
+          <div><span class="dev" style="font-size: 15px;">सुनीता देशमुख</span><span class="fig" style="font-size: 12px; color: #7A6E5E; margin-left: 7px;">LN-39244</span></div>
+          <span class="fig" style="text-align: right; font-size: 14px;">₹3,150</span>
+          <span class="fig" style="text-align: right; font-size: 14px; color: #9E2B25;">1.14</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span style="font-size: 15px; font-weight: 600;">What they said</span>
+
+      <div style="display: flex; flex-direction: column; gap: 13px;">
+        <div style="border-left: 2px solid #9E2B25; padding-left: 12px;">
+          <p class="dev" style="margin: 0; font-size: 16px; line-height: 1.45;">अठारह तारीख को सैलरी आएगी, तब कर दूंगा</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #7A6E5E;"><span class="dev">अनिल शर्मा</span> · promised <span class="fig">₹6,400</span> on 18 Sep</p>
+        </div>
+
+        <div style="border-left: 2px solid #B5A88E; padding-left: 12px;">
+          <p style="margin: 0; font-size: 16px; line-height: 1.45; font-style: italic;">I already paid this on the 2nd, check again</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #7A6E5E;">M. Lakshmi · disputes <span class="fig">₹15,200</span></p>
+        </div>
+
+        <div style="border-left: 2px solid #9E2B25; padding-left: 12px;">
+          <p class="dev" style="margin: 0; font-size: 16px; line-height: 1.45;">हो, परवा करतो</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #7A6E5E;"><span class="dev">विकास पाटील</span> · promised <span class="fig">₹2,900</span> on 15 Sep</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="border-top: 2px solid #2B2622; padding-top: 9px; display: flex; gap: 26px; font-size: 13px; color: #7A6E5E;">
+    <span><span class="fig" style="color: #9E2B25; font-weight: 600;">42</span> need a person</span>
+    <span><span class="fig" style="color: #2B2622; font-weight: 600;">118</span> promises fall due today</span>
+    <span style="margin-left: auto; font-style: italic;">Direction A — Khata</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Archivo:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Archivo', system-ui, sans-serif; color: #14110F; }
+    a { color: #C8452D; } a:hover { color: #9E3423; }
+    .d { font-family: 'Bodoni Moda', Georgia, serif; }
+    .dev { font-family: 'Noto Serif Devanagari', serif; }
+    .n { font-variant-numeric: tabular-nums; }
+    .field { border: 1px solid #E3DDD4; border-radius: 3px; padding: 11px 13px; background: #fff; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 820px; background: #FBFAF7; display: flex; box-sizing: border-box;">
+
+  <div style="width: 180px; border-right: 1px solid #E3DDD4; display: flex; flex-direction: column; flex-shrink: 0;">
+    <div style="padding: 22px 24px 18px;"><span class="d" style="font-size: 18px; font-weight: 600;">Voicely</span></div>
+    <div style="padding: 0 10px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Today</div>
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Conversations</div>
+      <div style="padding: 7px 14px; border-radius: 3px; background: #F4F1EB; font-size: 15px; font-weight: 500;">Scripts</div>
+    </div>
+    <div style="margin-top: auto; padding: 14px 24px; border-top: 1px solid #E3DDD4;">
+      <div style="font-size: 15px; color: #59524B; margin-bottom: 10px;">Settings</div>
+      <div style="font-size: 13px; color: #8C857D;">priya@lender.in</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div style="display: flex; align-items: baseline; gap: 14px; padding: 26px 36px 20px; border-bottom: 1px solid #E3DDD4;">
+      <span class="d" style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em;">EMI reminder</span>
+      <span class="dev" style="font-size: 13px; color: #59524B;">हिन्दी</span>
+      <span style="font-size: 13px; color: #8C857D;">· Ishani</span>
+      <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 9px; background: #C8452D; color: #FBFAF7; padding: 9px 18px; border-radius: 3px;">
+        <span style="font-size: 14px; font-weight: 600;">Test this agent</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 300px; flex-grow: 1; min-height: 0;">
+
+      <!-- Written as the conversation it produces, not as a form. Labels are
+           plain questions -- never "System Prompt". -->
+      <div style="padding: 26px 36px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
+
+        <div>
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 3px;">Opens with</div>
+          <div style="font-size: 13px; color: #8C857D; margin-bottom: 9px;">Spoken the moment the call connects. Recorded once, so it plays instantly.</div>
+          <div class="field dev" style="font-size: 16px; line-height: 1.5;">नमस्ते, मैं प्रिया बोल रही हूँ। क्या मेरी बात सही व्यक्ति से हो रही है?</div>
+        </div>
+
+        <div>
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 3px;">Who it is</div>
+          <div style="font-size: 13px; color: #8C857D; margin-bottom: 9px;">How it should carry itself. Write it the way you would brief a new agent.</div>
+          <div class="field dev" style="font-size: 15px; line-height: 1.6; color: #59524B;">आप प्रिया हैं, एक एनबीएफसी की ओर से भुगतान याद दिलाने वाली प्रतिनिधि। आपका लहजा शांत और सम्मानजनक है। आप वसूली एजेंट नहीं हैं — आप याद दिला रही हैं।</div>
+        </div>
+
+        <div>
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 3px;">What it needs to find out</div>
+          <div style="font-size: 13px; color: #8C857D; margin-bottom: 9px;">Worked into the conversation naturally, not read out as a list.</div>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <div style="display: flex; gap: 12px; align-items: baseline;">
+              <span class="n" style="font-size: 13px; color: #8C857D; width: 12px;">1</span>
+              <span class="dev field" style="flex-grow: 1; font-size: 15px;">क्या मैं सही व्यक्ति से बात कर रही हूँ?</span>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: baseline;">
+              <span class="n" style="font-size: 13px; color: #8C857D; width: 12px;">2</span>
+              <span class="dev field" style="flex-grow: 1; font-size: 15px;">आपकी इस महीने की ईएमआई अभी बाकी है — क्या आपको जानकारी है?</span>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: baseline;">
+              <span class="n" style="font-size: 13px; color: #8C857D; width: 12px;">3</span>
+              <span class="dev field" style="flex-grow: 1; font-size: 15px;">आप कब तक भुगतान कर पाएंगे?</span>
+            </div>
+            <div style="font-size: 13px; color: #C8452D; padding-left: 24px; padding-top: 3px;">+ Add a question</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- The rules that are not the user's to change. Stated, not hidden. -->
+      <div style="border-left: 1px solid #E3DDD4; padding: 26px 26px;">
+        <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Always applies</div>
+        <div style="font-size: 13px; color: #8C857D; margin-bottom: 16px; line-height: 1.5;">
+          Held to these on every call, whatever the script says.
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 11px;">
+          <div style="font-size: 13px; color: #59524B; line-height: 1.45;">Confirms who it is speaking to before mentioning money</div>
+          <div style="font-size: 13px; color: #59524B; line-height: 1.45;">Never threatens, never mentions legal action</div>
+          <div style="font-size: 13px; color: #59524B; line-height: 1.45;">Accepts a part payment without pushing for more</div>
+          <div style="font-size: 13px; color: #59524B; line-height: 1.45;">Stops collecting and hands off on genuine hardship</div>
+          <div style="font-size: 13px; color: #59524B; line-height: 1.45;">Says it is automated if asked</div>
+        </div>
+
+        <div style="border-top: 1px solid #E3DDD4; margin-top: 22px; padding-top: 18px;">
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Language &amp; voice</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+            <span class="dev" style="border: 1px solid #14110F; padding: 4px 10px; border-radius: 3px; font-size: 14px;">हिन्दी</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 4px 10px; border-radius: 3px; font-size: 14px; color: #59524B;">मराठी</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 4px 10px; border-radius: 3px; font-size: 14px; color: #59524B;">தமிழ்</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 4px 10px; border-radius: 3px; font-size: 14px; color: #59524B;">తెలుగు</span>
+            <span class="dev" style="border: 1px solid #E3DDD4; padding: 4px 10px; border-radius: 3px; font-size: 14px; color: #59524B;">বাংলা</span>
+            <span style="border: 1px solid #E3DDD4; padding: 4px 10px; border-radius: 3px; font-size: 14px; color: #59524B;">English</span>
+          </div>
+          <div class="field" style="font-size: 14px; display: flex; justify-content: space-between;">
+            <span>Ishani</span><span style="color: #8C857D;">unhurried</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

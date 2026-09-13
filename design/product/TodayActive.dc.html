@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Archivo:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Archivo', system-ui, sans-serif; color: #14110F; }
+    a { color: #C8452D; } a:hover { color: #9E3423; }
+    .d { font-family: 'Bodoni Moda', Georgia, serif; }
+    .dev { font-family: 'Noto Serif Devanagari', serif; }
+    .n { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 820px; background: #FBFAF7; display: flex; box-sizing: border-box;">
+
+  <div style="width: 180px; border-right: 1px solid #E3DDD4; display: flex; flex-direction: column; flex-shrink: 0;">
+    <div style="padding: 22px 24px 18px;"><span class="d" style="font-size: 18px; font-weight: 600;">Voicely</span></div>
+    <div style="padding: 0 10px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="padding: 7px 14px; border-radius: 3px; background: #F4F1EB; font-size: 15px; font-weight: 500;">Today</div>
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Conversations</div>
+      <div style="padding: 7px 14px; border-radius: 3px; font-size: 15px; color: #59524B;">Scripts</div>
+    </div>
+    <div style="margin-top: auto; padding: 14px 24px; border-top: 1px solid #E3DDD4;">
+      <div style="font-size: 15px; color: #59524B; margin-bottom: 10px;">Settings</div>
+      <div style="font-size: 13px; color: #8C857D;">priya@lender.in</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div style="display: flex; align-items: baseline; gap: 14px; padding: 26px 40px 20px;">
+      <span class="d" style="font-size: 27px; font-weight: 600; letter-spacing: -0.015em;">Collections</span>
+      <span class="n" style="font-size: 13px; color: #8C857D;">13 September</span>
+      <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 9px; border: 1px solid #14110F; padding: 8px 16px; border-radius: 3px;">
+        <span style="font-size: 14px; font-weight: 500;">Test a call</span>
+      </div>
+    </div>
+
+    <!-- The band carries whatever just happened. Here: the last thing said. -->
+    <div style="background: #14110F; color: #FBFAF7; padding: 28px 40px 26px;">
+      <div style="font-size: 13px; color: rgba(251,250,247,0.45); margin-bottom: 16px;">Last thing said</div>
+      <p class="dev" style="margin: 0; font-size: 31px; line-height: 1.34; letter-spacing: -0.01em; max-width: 700px;">
+        अठारह तारीख को सैलरी आएगी, तब कर दूंगा
+      </p>
+      <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 16px;">
+        <span class="d" style="font-size: 15px; color: #C8452D;">Ramesh Kumar</span>
+        <span class="n" style="font-size: 13px; color: rgba(251,250,247,0.55);">LN-44718 · ₹4,820 · हिन्दी</span>
+        <span class="n" style="font-size: 13px; margin-left: auto;">will pay 18 Sep</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 280px; flex-grow: 1; min-height: 0;">
+
+      <div style="padding: 26px 40px 0; min-width: 0;">
+        <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
+          <span class="d" style="font-size: 18px; font-weight: 600;">Also said today</span>
+          <span class="n" style="font-size: 13px; color: #8C857D; margin-left: auto;">12 conversations</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; gap: 18px;">
+            <span class="n" style="font-size: 12px; color: #C8452D; width: 72px; flex-shrink: 0; padding-top: 3px;">disputes</span>
+            <div>
+              <p style="margin: 0; font-size: 16px; line-height: 1.45;">I already paid this on the 2nd, check again</p>
+              <p class="n" style="margin: 4px 0 0; font-size: 12px; color: #8C857D;">M. Lakshmi · ₹15,200 · தமிழ்</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 18px;">
+            <span class="n" style="font-size: 12px; color: #8C857D; width: 72px; flex-shrink: 0; padding-top: 3px;">promises</span>
+            <div>
+              <p class="dev" style="margin: 0; font-size: 17px; line-height: 1.45;">हो, परवा करतो</p>
+              <p class="n" style="margin: 4px 0 0; font-size: 12px; color: #8C857D;">Vikas Patil · ₹2,900 on 15 Sep · मराठी</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 18px;">
+            <span class="n" style="font-size: 12px; color: #C8452D; width: 72px; flex-shrink: 0; padding-top: 3px;">hardship</span>
+            <div>
+              <p style="margin: 0; font-size: 16px; line-height: 1.45;">Job chole gechhe, ekhon kichhu korte parbo na</p>
+              <p class="n" style="margin: 4px 0 0; font-size: 12px; color: #8C857D;">Rahul Bose · ₹21,500 · বাংলা</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- What the agent has actually captured. Not an ops funnel -- there is no
+           dialling yet, so queued/dialled/connected would be theatre. -->
+      <div style="border-left: 1px solid #E3DDD4; padding: 26px 28px;">
+        <div class="d n" style="font-size: 44px; line-height: 1; font-weight: 600;">8</div>
+        <div style="font-size: 13px; color: #59524B; margin-top: 5px;">promises captured</div>
+        <div class="n" style="font-size: 14px; margin-top: 10px;">₹48,900 committed</div>
+
+        <div style="border-top: 1px solid #E3DDD4; margin-top: 22px; padding-top: 18px; display: flex; flex-direction: column; gap: 11px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span style="font-size: 14px; color: #59524B;">Calls tested</span><span class="n" style="font-size: 14px;">12</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span style="font-size: 14px; color: #59524B;">Right person reached</span><span class="n" style="font-size: 14px;">11</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span style="font-size: 14px; color: #C8452D;">Needs a person</span><span class="n" style="font-size: 14px; color: #C8452D;">3</span>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid #E3DDD4; margin-top: 22px; padding-top: 18px;">
+          <div style="font-size: 13px; color: #59524B; margin-bottom: 14px;">Outcomes</div>
+          <div style="display: flex; flex-direction: column; gap: 9px;">
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="font-size: 12px; color: #3F7D5C;">Promised</span><span class="n" style="font-size: 12px;">8</span></div>
+              <div style="height: 4px; background: #F4F1EB;"><div style="width: 67%; height: 100%; background: #3F7D5C;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="font-size: 12px; color: #D98B45;">Disputed</span><span class="n" style="font-size: 12px;">2</span></div>
+              <div style="height: 4px; background: #F4F1EB;"><div style="width: 17%; height: 100%; background: #D98B45;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="font-size: 12px; color: #C8452D;">Hardship</span><span class="n" style="font-size: 12px;">1</span></div>
+              <div style="height: 4px; background: #F4F1EB;"><div style="width: 8%; height: 100%; background: #C8452D;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="font-size: 12px; color: #8C857D;">Wrong number</span><span class="n" style="font-size: 12px;">1</span></div>
+              <div style="height: 4px; background: #F4F1EB;"><div style="width: 8%; height: 100%; background: #8C857D;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
