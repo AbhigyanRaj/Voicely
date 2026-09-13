@@ -41,6 +41,8 @@ import settingsRoutes from './routes/settings.js';
 import developerRoutes from './routes/developer.js';
 import apiRoutes from './routes/api.js';
 import { setupMediaStreamWebSocket } from './controllers/mediaStreamController.js';
+// Cartesia "Kendra": what the sandbox uses unless the agent names another voice.
+const DEFAULT_SANDBOX_VOICE_ID = '79a125e8-cd45-4c13-8a67-188112f4dd22';
 import { initializeLiveCallWebSocket, getLiveCallStateSize } from './websocket/liveCallServer.js';
 import http from 'http';
 import statsRoutes from './routes/stats.js';
@@ -198,6 +200,14 @@ const startServer = async () => {
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.success(`SERVER RUNNING ON PORT ${PORT} (0.0.0.0)`);
       logger.info(`Health Check: http://localhost:${PORT}/api/v1/health`);
+
+      // Synthesize the demo agents' openers now, so the first visitor of a cold
+      // process hears the greeting as instantly as the hundredth. After listen()
+      // and unawaited: it must not hold the port, and a Cartesia outage here is
+      // not a reason to fail to boot.
+      import('./services/greetingCache.js')
+        .then(m => m.prewarmGreetings({ voiceId: DEFAULT_SANDBOX_VOICE_ID }))
+        .catch(err => logger.warn(`Greeting prewarm skipped: ${err.message}`));
     });
 
     // Graceful Shutdown Handler

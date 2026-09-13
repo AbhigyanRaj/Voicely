@@ -124,3 +124,45 @@ describe('StreamingTTSBase', () => {
     await expect(bare._synthesize('x')).rejects.toThrow('must implement _synthesize');
   });
 });
+
+describe('announcing a failure', () => {
+  it('emits synthesisFailed rather than swallowing the error', async () => {
+    const tts = new FakeTTS({ optimizeFor: 'latency', metricLabel: 'tts' });
+    const failures = [];
+    tts.on('synthesisFailed', (err) => failures.push(err.message));
+
+    tts.failOn = 'Hello there.';
+    tts.processTextChunk('Hello there. ');
+    tts.flush();
+    await tick(30);
+
+    // A silent failure here is indistinguishable from the agent having nothing
+    // to say, so the caller has to be able to tell the user what happened.
+    expect(failures).toEqual(['boom']);
+  });
+
+  it('still emits the clauses that did succeed, in order', async () => {
+    const tts = new FakeTTS({ optimizeFor: 'latency', metricLabel: 'tts' });
+    const heard = collect(tts);
+
+    tts.failOn = 'Second clause.';
+    tts.processTextChunk('First clause. Second clause. Third clause. ');
+    tts.flush();
+    await tick(40);
+
+    // The failed clause leaves a hole rather than stalling the cursor behind it.
+    expect(heard).toEqual(['First clause.', 'Third clause.']);
+  });
+
+  it('does not emit when every clause succeeds', async () => {
+    const tts = new FakeTTS({ optimizeFor: 'latency', metricLabel: 'tts' });
+    const failures = [];
+    tts.on('synthesisFailed', () => failures.push(1));
+
+    tts.processTextChunk('All fine here. ');
+    tts.flush();
+    await tick(20);
+
+    expect(failures).toHaveLength(0);
+  });
+});

@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fetch from 'node-fetch';
 import https from 'https';
-import { record } from '../utils/latencyMetrics.js';
+import { record, count } from '../utils/latencyMetrics.js';
 import logger from '../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -148,7 +148,28 @@ export const parseChatHistoryToMessages = (systemPrompt, chatHistory) => {
  *   speculative prefill, which starts generating against a partial transcript
  *   and abandons the attempt when a newer partial supersedes it.
  */
-export const generateConversationalResponseStream = async (systemPrompt, chatHistory, onChunk, llmApiKey = null, signal = null) => {
+/**
+ * How long Groq says to wait, from its own 429 body.
+ *
+ * It states the figure precisely -- "Please try again in 840ms" -- so there is no
+ * need to guess a backoff. Capped, because a turn the user is waiting through is
+ * only worth so much silence -- but the cap is generous, since a two-second reply
+ * still answers the question and a dropped turn never does.
+ */
+const MAX_RETRY_WAIT_MS = 2000;
+
+export function parseRetryAfterMs(errorText = '') {
+  const ms = errorText.match(/try again in ([\d.]+)ms/i);
+  if (ms) return Math.min(MAX_RETRY_WAIT_MS, Math.ceil(parseFloat(ms[1])));
+  const secs = errorText.match(/try again in ([\d.]+)s/i);
+  if (secs) {
+    const wait = Math.ceil(parseFloat(secs[1]) * 1000);
+    return wait <= MAX_RETRY_WAIT_MS ? wait : null;
+  }
+  return null;
+}
+
+const generateConversationalResponseStreamOnce = async (systemPrompt, chatHistory, onChunk, llmApiKey = null, signal = null) => {
   const apiKey = llmApiKey || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
   const isGroq = apiKey && apiKey.startsWith('gsk_');
   
@@ -230,7 +251,12 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
     if (!response.ok) {
       const errorText = await response.text();
       logger.error('Groq API Error Response:', errorText);
-      throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
+      const err = new Error(`Groq API Error: ${response.status} - ${errorText}`);
+      // Tagged so callers can tell a transient rate limit apart from a real
+      // failure: the first costs a short wait, the second costs the turn.
+      err.status = response.status;
+      err.retryAfterMs = response.status === 429 ? parseRetryAfterMs(errorText) : null;
+      throw err;
     }
 
     return new Promise((resolve, reject) => {
@@ -306,6 +332,50 @@ export const generateConversationalResponseStream = async (systemPrompt, chatHis
   }
 };
 
+/**
+ * One conversational turn, retried once if the provider says to.
+ *
+ * Groq's free tier caps input tokens per minute, and speculative prefill spends
+ * roughly three full-context requests per turn, so a brisk conversation reaches
+ * the ceiling. The 429 body names the wait precisely -- usually under a second --
+ * and without this retry the whole turn was lost: the caller logged the error,
+ * swallowed it, and the user got silence with no explanation.
+ *
+ * Only retried when the provider both asked for it and named a short wait. An
+ * aborted request is never retried: something newer has superseded it.
+ */
+export const generateConversationalResponseStream = async (
+  systemPrompt, chatHistory, onChunk, llmApiKey = null, signal = null, onRateLimit = null
+) => {
+  try {
+    return await generateConversationalResponseStreamOnce(
+      systemPrompt, chatHistory, onChunk, llmApiKey, signal
+    );
+  } catch (err) {
+    if (err?.name === 'AbortError' || signal?.aborted) throw err;
+    if (err?.status !== 429) throw err;
+    // Even one we cannot wait out is a signal to stop spending tokens we do not
+    // have, so the callback fires before the decision not to retry.
+    if (!err.retryAfterMs) { onRateLimit?.(err); throw err; }
+
+    count('llm.rate_limited');
+    logger.warn(`Provider rate limited; retrying once in ${err.retryAfterMs}ms`);
+    onRateLimit?.(err);
+    await new Promise((resolve) => setTimeout(resolve, err.retryAfterMs));
+    if (signal?.aborted) {
+      const aborted = new Error('aborted');
+      aborted.name = 'AbortError';
+      throw aborted;
+    }
+
+    const result = await generateConversationalResponseStreamOnce(
+      systemPrompt, chatHistory, onChunk, llmApiKey, signal
+    );
+    count('llm.rate_limit_recovered');
+    return result;
+  }
+};
+
 export const transcribeAudio = async (audioBuffer) => {
   try {
     logger.debug('Gemini configuration: Transcription mode active');
@@ -316,7 +386,54 @@ export const transcribeAudio = async (audioBuffer) => {
   }
 };
 
+const MAX_ANALYSIS_TOKENS = 640;
+
+/**
+ * Analysis is batch work, so it can wait where a live turn cannot.
+ *
+ * It runs at the END of a call, by which point the conversation has already
+ * spent the minute's token budget -- which made the single most valuable output
+ * of the whole system the one most likely to be starved by a rate limit. A live
+ * turn can only afford ~2s of silence; nobody is listening to this one, so it
+ * backs off properly and gets the answer.
+ */
+const ANALYSIS_RETRIES = 3;
+const ANALYSIS_BACKOFF_MS = [4000, 12000, 25000];
+
 export const callGroqChatCompletion = async (messages, modelName = ANALYSIS_LLM_MODEL) => {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= ANALYSIS_RETRIES; attempt++) {
+    try {
+      return await callGroqChatCompletionOnce(messages, modelName);
+    } catch (err) {
+      lastError = err;
+      const rateLimited = err?.status === 429 || /rate.?limit/i.test(err?.message || '');
+      // A per-day cap does not clear in twenty-five seconds. Waiting it out just
+      // delays the same failure and holds the session open while doing it, so a
+      // daily limit fails immediately and visibly instead.
+      const dailyCap = /per day|\bTPD\b|tokens per day/i.test(err?.message || '');
+      if (dailyCap) {
+        count('analysis.daily_quota_exhausted');
+        logger.error('Provider daily token quota is exhausted; analysis cannot run until it resets');
+        throw err;
+      }
+      if (!rateLimited || attempt === ANALYSIS_RETRIES) throw err;
+
+      const wait = ANALYSIS_BACKOFF_MS[attempt];
+      count('analysis.rate_limited');
+      logger.warn(`Analysis rate limited; retrying in ${wait / 1000}s (attempt ${attempt + 1}/${ANALYSIS_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, wait));
+    }
+  }
+  throw lastError;
+};
+
+const callGroqChatCompletionOnce = async (messages, modelName = ANALYSIS_LLM_MODEL) => {
+  // 1024 exactly hit Groq's free-tier output ceiling (OTPM 1000), so any request
+  // that asked for the maximum was rejected outright before generating a token.
+  // The analyses here return a small JSON object; 640 is comfortably above what
+  // any of them produce and comfortably under the cap.
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("GROQ_API_KEY not configured in environment");
@@ -332,7 +449,7 @@ export const callGroqChatCompletion = async (messages, modelName = ANALYSIS_LLM_
       model: modelName,
       messages: messages,
       temperature: 0.2,
-      max_tokens: 1024,
+      max_tokens: MAX_ANALYSIS_TOKENS,
       reasoning_effort: 'none'
     })
   });
@@ -340,7 +457,9 @@ export const callGroqChatCompletion = async (messages, modelName = ANALYSIS_LLM_
   if (!response.ok) {
     const errorText = await response.text();
     logger.error(`Groq Chat API Error [${response.status}]:`, errorText);
-    throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
+    const err = new Error(`Groq API Error: ${response.status} - ${errorText}`);
+    err.status = response.status;
+    throw err;
   }
 
   const data = await response.json();
@@ -502,65 +621,116 @@ export const generateCreditCardQuestions = () => {
 /**
  * Perform Industry-Grade Deep Analysis on call transcript
  */
-export const performDeepAnalysis = async (chatHistory, agentType, customerName, agentGoal, questions) => {
-  const prompt = `
-You are an expert sales psychologist and business analyst. Analyze this phone call between an AI Agent and a customer named ${customerName}.
+/**
+ * Outcomes a collections call can end in. Mirrors the `Outcome` union in
+ * frontend/src/lib/collections.ts -- one vocabulary, both ends.
+ */
+export const COLLECTION_OUTCOMES = [
+  'promise_to_pay', 'partial_promise', 'dispute', 'hardship',
+  'callback', 'refused', 'wrong_number', 'no_answer',
+];
 
-AGENT CONTEXT:
-Type: ${agentType}
-Business Goal: ${agentGoal}
+/** Why the borrower has not paid. The thing a disposition code never tells you. */
+export const NON_PAYMENT_REASONS = [
+  'job_loss', 'medical', 'business_loss', 'dispute',
+  'forgot', 'travelling', 'salary_delayed', 'other',
+];
+
+/**
+ * Read a collections call and extract what it actually produced.
+ *
+ * This replaces a sales analysis -- intent tier, objections drawn from
+ * Price/Timing/Trust/Authority/Competition, "did they schedule a site visit" --
+ * which described a lead rather than a debt. A collections call has one job: find
+ * out when the money is coming and why it has not. The fields below are what a
+ * collections desk works from the next morning.
+ *
+ * `promisedOn` is resolved to an absolute date here rather than stored as
+ * "next Tuesday", because it will be read days later when "next Tuesday" no
+ * longer means anything.
+ */
+export const performDeepAnalysis = async (
+  chatHistory, agentType, customerName, agentGoal, questions, options = {}
+) => {
+  const today = options.today || new Date().toISOString().slice(0, 10);
+  const amountDue = options.amountDue ?? null;
+
+  const prompt = `
+You are analysing a debt collection call between an automated agent and a borrower named ${customerName}. The call may be in Hindi, Tamil, Telugu, Marathi, Bengali or English. Read it in whatever language it is in.
+
+TODAY'S DATE: ${today}
+${amountDue !== null ? `AMOUNT DUE: ${amountDue}` : ''}
 
 TRANSCRIPT:
 ${chatHistory}
 
-QUESTIONS AGENT WAS SUPPOSED TO ASK:
+QUESTIONS THE AGENT WAS MEANT TO ASK:
 ${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
-Based on the above, provide a deep qualitative analysis in strictly valid JSON format:
+Return strictly valid JSON, no markdown:
 {
-  "sentiment": "Enthusiastic" | "Hesitant" | "Annoyed" | "Confused" | "Neutral",
-  "objections": ["subset of: Price, Timing, Trust, Need, Authority, Competition"],
-  "intentTier": "High" | "Medium" | "Low",
-  "extractedData": { "key": "value pairs for specific data points found in transcript like budget, city, name, etc." },
-  "competitorMentioned": true | false,
-  "summary": "A concise 2-sentence professional summary for the business owner",
+  "outcome": one of ${JSON.stringify(COLLECTION_OUTCOMES)},
+  "promisedOn": "YYYY-MM-DD or null",
+  "promisedAmount": number or null,
+  "reason": one of ${JSON.stringify(NON_PAYMENT_REASONS)} or null,
+  "rightPartyContact": true | false,
+  "escalate": true | false,
+  "escalateReason": "one short line, or null",
+  "borrowerQuote": "the borrower's own most informative sentence, verbatim, in the language they said it",
+  "sentiment": "Cooperative" | "Anxious" | "Annoyed" | "Confused" | "Neutral",
+  "summary": "two sentences for the collections desk",
   "stageAnalysis": {
-    "questionsReached": total_number_of_questions_completed,
-    "dropOffPoint": "The exact question where user hangup or conversation stalled"
-  },
-  "followupInfo": {
-    "shouldFollowUp": true | false,
-    "scheduledTime": "Relative time like 'in 5 minutes' or 'tomorrow at 2pm' or null",
-    "reason": "Short reason for follow up"
+    "questionsReached": number,
+    "dropOffPoint": "the question where the call stalled, or null"
   }
 }
 
 Rules:
-1. Be objective, not optimistic.
-2. If the user was rude or hung up immediately, set sentiment to Annoyed.
-3. intentTier should be HIGH if they scheduled a site visit, meeting, purchase or said YES clearly to the primary goal. MEDIUM if they had many questions but no commitment. LOW if they were just scouting or disinterested.
-4. Objections MUST only use the words: Price, Timing, Trust, Need, Authority, Competition. If they mention money, it's 'Price'. If they are busy, it's 'Timing'.
-5. Return ONLY raw JSON string. No markdown code blocks.
+1. "promise_to_pay" only when they commit to paying the FULL amount and give a time. "partial_promise" when they commit to part of it. A vague "I'll try" is NOT a promise -- that is "callback" or "refused" depending on tone.
+2. Resolve every date against TODAY'S DATE. "Next week" and "अगले हफ्ते" become an actual YYYY-MM-DD. If they named no time, promisedOn is null even when outcome is a promise.
+3. "wrong_number" when the person says they are not the borrower and do not know them. If someone else answered but knows the borrower, that is "callback".
+4. "rightPartyContact" is true only if the borrower confirmed their identity. Default false when unclear -- getting this wrong is a compliance problem, not a data problem.
+5. "escalate" is true for: hardship, a disputed amount, a request to stop calling, any mention of legal action, or an abusive or distressed caller. When in doubt, escalate.
+6. "hardship" outranks the others. If they mention lost work, illness or a family emergency, the outcome is "hardship" even if they also promised something.
+7. "borrowerQuote" must be the borrower's words, not the agent's, and not translated.
+8. Return ONLY raw JSON. No markdown code fences.
 `;
 
   try {
     const messages = [{ role: 'user', content: prompt }];
     let responseText = await callGroqChatCompletion(messages, ANALYSIS_LLM_MODEL);
-    
-    // Safety: Strip markdown
     responseText = responseText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-    
-    return JSON.parse(responseText);
+
+    const parsed = JSON.parse(responseText);
+
+    // The model is asked for a closed set; hold it to one rather than letting an
+    // invented outcome reach the database and the UI's colour mapping.
+    if (!COLLECTION_OUTCOMES.includes(parsed.outcome)) {
+      logger.warn(`Analysis returned an unknown outcome "${parsed.outcome}"; recording as no_answer`);
+      count('analysis.unknown_outcome');
+      parsed.outcome = 'no_answer';
+    }
+    if (parsed.reason && !NON_PAYMENT_REASONS.includes(parsed.reason)) parsed.reason = 'other';
+    if (parsed.promisedOn && !/^\d{4}-\d{2}-\d{2}$/.test(parsed.promisedOn)) parsed.promisedOn = null;
+    // Hardship and disputes are escalations whatever the model decided.
+    if (parsed.outcome === 'hardship' || parsed.outcome === 'dispute') parsed.escalate = true;
+
+    return parsed;
   } catch (error) {
-    logger.error('Deep analysis error via Groq', error);
+    logger.error('Collections analysis failed', error);
+    count('analysis.failed');
     return {
+      outcome: 'no_answer',
+      promisedOn: null,
+      promisedAmount: null,
+      reason: null,
+      rightPartyContact: false,
+      escalate: true,
+      escalateReason: 'Analysis failed; a person should read this call.',
+      borrowerQuote: null,
       sentiment: 'Neutral',
-      objections: [],
-      intentTier: 'Medium',
-      extractedData: {},
-      competitorMentioned: false,
-      summary: 'Analysis failed due to technical error.',
-      stageAnalysis: { questionsReached: 0, dropOffPoint: null }
+      summary: 'Analysis failed due to a technical error.',
+      stageAnalysis: { questionsReached: 0, dropOffPoint: null },
     };
   }
 };

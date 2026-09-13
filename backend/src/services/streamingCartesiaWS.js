@@ -31,9 +31,12 @@ class StreamingCartesiaWS extends EventEmitter {
    * @param {'latency'|'quality'} [options.optimizeFor]
    * @param {string}  [options.apiKey]
    */
-  constructor({ voiceId, isWebCall = false, optimizeFor = 'latency', apiKey = null } = {}) {
+  constructor({ voiceId, language = 'en', isWebCall = false, optimizeFor = 'latency', apiKey = null } = {}) {
     super();
     this.voiceId = voiceId;
+    // Cartesia infers pronunciation from this, not from the script of the text.
+    // Without it Devanagari is read as if it were English and comes out as noise.
+    this.language = language;
     this.isWebCall = isWebCall;
     this.optimizeFor = optimizeFor;
     this.apiKey = apiKey || process.env.CARTESIA_API_KEY;
@@ -184,6 +187,42 @@ class StreamingCartesiaWS extends EventEmitter {
     this._awaitingNewUtterance = true;
   }
 
+  /**
+   * Speak something that is not part of the reply.
+   *
+   * Used for the backchannel -- the short sound spoken while the caller is still
+   * finishing. Three things make this different from an ordinary clause:
+   *
+   *  - `continue: true` is mandatory. A false continuation closes the context
+   *    while `_contextSeq` stays put, so the real reply would then stream into a
+   *    context Cartesia has already finished.
+   *  - It must not claim `_utteranceStartedAt`, or tts.ttfb would measure the
+   *    filler rather than the reply it was covering for.
+   *  - It must not consume the first-clause fast path, which belongs to the real
+   *    reply's opening words.
+   */
+  speakAside(text) {
+    const socket = this.ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!text) return;
+
+    try {
+      socket.send(
+        JSON.stringify({
+          model_id: MODEL_ID,
+          transcript: text,
+          language: this.language,
+          voice: { mode: 'id', id: this.voiceId },
+          output_format: this.outputFormat,
+          context_id: this._contextId,
+          continue: true,
+        })
+      );
+    } catch (err) {
+      logger.debug(`Failed to send aside to Cartesia: ${err.message}`);
+    }
+  }
+
   _send(text, shouldContinue) {
     const socket = this.ws;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -205,6 +244,7 @@ class StreamingCartesiaWS extends EventEmitter {
         JSON.stringify({
           model_id: MODEL_ID,
           transcript: text,
+          language: this.language,
           voice: { mode: 'id', id: this.voiceId },
           output_format: this.outputFormat,
           context_id: this._contextId,

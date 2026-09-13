@@ -16,6 +16,9 @@
  */
 import fetch from 'node-fetch';
 import WebSocket from 'ws';
+import fsp from 'fs/promises';
+import os from 'os';
+import crypto from 'crypto';
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -32,9 +35,61 @@ const argOf = (name, fallback) => {
 const PORT = Number(argOf('port', 5001));
 const TURNS = Number(argOf('turns', 6));
 const PROTOCOL = argOf('protocol', 'binary');
+const LANGUAGE = argOf('language', 'en-US');
 const LABEL = argOf('label', PROTOCOL);
 const BASE = `http://localhost:${PORT}/api/v1`;
 const CAPTURE_RATE = PROTOCOL === 'json' ? 8000 : 24000;
+
+/**
+ * What a borrower says on a collections call, per language.
+ *
+ * The caller is voiced differently from the agent so nothing is ambiguous, and
+ * the lines follow the shape of a real reminder call: confirm identity,
+ * acknowledge the debt, name a date, close.
+ */
+const SCRIPTS = {
+  hi: {
+    // "Kabir", a male voice distinct from the agent's Ishani.
+    callerVoice: 'cb9c954d-bcaa-43ed-82bf-aeb5e88a3cb5',
+    moduleId: 'demo-agent-emi-reminder',
+    lines: [
+      'हाँ जी, रमेश बोल रहा हूँ।',
+      'हाँ, मुझे पता है कि ईएमआई बाकी है।',
+      'अठारह तारीख को सैलरी आएगी, तब कर दूंगा।',
+      'पूरा अमाउंट एक साथ कर दूंगा।',
+      'नहीं, और कोई दिक्कत नहीं है।',
+      'ठीक है, धन्यवाद।',
+      'हाँ, यही नंबर सही है।',
+      'अच्छा ठीक है, नमस्ते।',
+    ],
+  },
+  mr: {
+    // "Suresh", distinct from the agent's Anika.
+    callerVoice: 'f227bc18-3704-47fe-b759-8c78a450fdfa',
+    moduleId: 'demo-agent-emi-reminder',
+    lines: [
+      'हो, मीच बोलतोय.',
+      'हो, मला माहीत आहे की हप्ता बाकी आहे.',
+      'अठरा तारखेला पगार होईल, तेव्हा भरतो.',
+      'पूर्ण रक्कम एकदम भरतो.',
+      'नाही, दुसरी काही अडचण नाही.',
+      'ठीक आहे, धन्यवाद.',
+    ],
+  },
+  ta: {
+    // "Karthik", distinct from the agent's Janani.
+    callerVoice: '19f28c21-ae34-499f-b64a-f7b09cd9b516',
+    moduleId: 'demo-agent-emi-reminder',
+    lines: [
+      'ஆமா, நான் தான் பேசுறேன்.',
+      'ஆமா, தவணை பாக்கி இருக்கு தெரியும்.',
+      'பதினெட்டாம் தேதி சம்பளம் வரும், அப்போ கட்டிடுறேன்.',
+      'முழு தொகையும் ஒரே தடவையா கட்டிடுறேன்.',
+      'இல்ல, வேற பிரச்சனை எதுவும் இல்ல.',
+      'சரி, நன்றி.',
+    ],
+  },
+};
 
 // Utterances a sales/support agent will actually answer, so the LLM produces a
 // normal-length reply rather than a clarifying question.
@@ -84,8 +139,26 @@ const linearToMulaw = (sample) => {
   return ~(sign | (exponent << 4) | mantissa) & 0xff;
 };
 
+/**
+ * Where synthesized test speech is kept between runs.
+ *
+ * The utterances are fixed, so re-synthesizing them on every run buys nothing
+ * and costs Cartesia credits -- enough of them, across a day of runs, to exhaust
+ * the plan and block the very measurements this script exists to take.
+ */
+const CLIP_CACHE_DIR = path.join(os.tmpdir(), 'voicely-harness-clips');
+
+const clipPathFor = (text) =>
+  path.join(
+    CLIP_CACHE_DIR,
+    `${CAPTURE_RATE}-${LANGUAGE}-${crypto.createHash('sha1').update(text).digest('hex')}.pcm`
+  );
+
 /** Synthesize an utterance to raw PCM16 at CAPTURE_RATE, to play in as the mic. */
 const speak = async (text) => {
+  const cached = await fsp.readFile(clipPathFor(text)).catch(() => null);
+  if (cached && cached.length > 0) return cached;
+
   const key = process.env.CARTESIA_API_KEY;
   if (!key) throw new Error('CARTESIA_API_KEY required to synthesize test speech');
 
@@ -100,31 +173,41 @@ const speak = async (text) => {
       model_id: 'sonic-3.5',
       transcript: text,
       // A different voice from the agent's, so nothing is ambiguous.
-      voice: { mode: 'id', id: '47c38ca4-5f35-497b-b1a3-415245fb35e1' },
+      voice: { mode: 'id', id: SCRIPTS[LANGUAGE]?.callerVoice || '47c38ca4-5f35-497b-b1a3-415245fb35e1' },
+      language: LANGUAGE.split('-')[0],
       output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: CAPTURE_RATE },
     }),
   });
   if (!res.ok) throw new Error(`Cartesia ${res.status}: ${await res.text()}`);
-  return Buffer.from(await res.arrayBuffer());
+  const pcm = Buffer.from(await res.arrayBuffer());
+
+  await fsp.mkdir(CLIP_CACHE_DIR, { recursive: true }).catch(() => {});
+  await fsp.writeFile(clipPathFor(text), pcm).catch(() => {});
+  return pcm;
 };
 
 const main = async () => {
-  console.log(`\n=== Sandbox latency: ${LABEL} (protocol=${PROTOCOL}, ${CAPTURE_RATE}Hz, port ${PORT}) ===\n`);
+  console.log(`\n=== Sandbox latency: ${LABEL} (${LANGUAGE}, ${PROTOCOL}, ${CAPTURE_RATE}Hz, port ${PORT}) ===\n`);
 
-  process.stdout.write('synthesizing test speech... ');
+  process.stdout.write('loading test speech... ');
   const clips = [];
-  for (const text of UTTERANCES.slice(0, TURNS)) clips.push({ text, pcm: await speak(text) });
-  console.log(`${clips.length} utterances ready`);
+  let synthesized = 0;
+  const script = (SCRIPTS[LANGUAGE]?.lines || UTTERANCES).slice(0, TURNS);
+  for (const text of script) {
+    const wasCached = await fsp.access(clipPathFor(text)).then(() => true, () => false);
+    clips.push({ text, pcm: await speak(text) });
+    if (!wasCached) synthesized += 1;
+  }
+  console.log(`${clips.length} utterances ready (${synthesized} newly synthesized, rest cached)`);
 
   const t0 = Date.now();
   const res = await fetch(`${BASE}/calls/browser-sandbox`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      moduleId: 'demo-agent-calm',
-      customerName: 'Harness',
-      selectedVoice: 'a7a59115-2425-4192-844c-1e98ec7d6877',
-      selectedLanguage: 'en-US',
+      moduleId: SCRIPTS[LANGUAGE]?.moduleId || 'demo-agent-emi-reminder',
+      customerName: { hi: 'रमेश', mr: 'सुरेश', ta: 'கார்த்தி' }[LANGUAGE] || 'Harness',
+      selectedLanguage: LANGUAGE,
       ttsProvider: 'cartesia',
       optimizeFor: 'latency',
     }),
@@ -140,9 +223,20 @@ const main = async () => {
   ws.binaryType = 'arraybuffer';
 
   const turnLatencies = [];
+  // What the server says each turn cost, as the sandbox UI now displays it.
+  // Measured from a different origin than turnLatencies -- the server clock
+  // starts when Deepgram finalizes, this harness's when it stops sending audio --
+  // so they are reported side by side rather than checked against each other.
+  const serverLatencies = [];
   let awaitingReply = null; // { sentAt, resolve }
   let ready = false;
   let readyMs = null;
+  // The pre-synthesized opener: how long after `ready` its first frame lands,
+  // and how much audio arrived before the first turn.
+  let greetingFirstFrameMs = null;
+  let greetingBytes = 0;
+  let readyAt = null;
+  let turnsStarted = false;
   const wsOpenAt = Date.now();
 
   ws.on('message', (raw) => {
@@ -155,13 +249,23 @@ const main = async () => {
 
     if (msg.event === 'ready') {
       ready = true;
-      readyMs = Date.now() - wsOpenAt;
+      readyAt = Date.now();
+      readyMs = readyAt - wsOpenAt;
     } else if (msg.event === 'media' && awaitingReply) {
       const elapsed = Date.now() - awaitingReply.sentAt;
       turnLatencies.push(elapsed);
       const pending = awaitingReply;
       awaitingReply = null;
       pending.resolve(elapsed);
+    } else if (msg.event === 'media' && ready && !turnsStarted) {
+      // Audio with no turn outstanding, before the first turn, is the opener.
+      // The `turnsStarted` guard matters: once turns are running, every frame of
+      // a reply after its first lands here too, and counting those as greeting
+      // audio reported 3MB for a four-second clip.
+      if (greetingFirstFrameMs === null) greetingFirstFrameMs = Date.now() - readyAt;
+      greetingBytes += Buffer.from(msg.media.payload, 'base64').length;
+    } else if (msg.event === 'turn_latency') {
+      serverLatencies.push(msg.ms);
     } else if (msg.event === 'error') {
       console.error(`  server error: ${msg.message}`);
     }
@@ -183,11 +287,21 @@ const main = async () => {
   while (!ready && Date.now() < readyDeadline) await sleep(25);
   if (!ready) throw new Error('server never sent `ready`');
 
-  console.log(`session up: http=${httpMs}ms  ws+start->ready=${readyMs}ms\n`);
+  console.log(`session up: http=${httpMs}ms  ws+start->ready=${readyMs}ms`);
+
+  // Give the opener a moment to arrive before talking over it, the way a user
+  // would. Short enough that it does not distort the turn measurements below.
+  await sleep(600);
+  console.log(
+    greetingFirstFrameMs === null
+      ? 'greeting: NONE RECEIVED\n'
+      : `greeting: first frame ${greetingFirstFrameMs}ms after ready, ${greetingBytes}B buffered\n`
+  );
 
   const FRAME_MS = 20;
   const samplesPerFrame = Math.round((CAPTURE_RATE * FRAME_MS) / 1000);
 
+  turnsStarted = true;
   for (const [index, clip] of clips.entries()) {
     process.stdout.write(`turn ${index + 1}/${clips.length}  "${clip.text.slice(0, 40)}..." `);
 
@@ -248,6 +362,12 @@ const main = async () => {
   console.log('\n--- client-observed, user stopped speaking -> first reply audio ---');
   console.log(summarize(`${LABEL} mouth-to-ear`, turnLatencies));
   console.log(`\ncold start (ws start -> ready): ${readyMs}ms   http register: ${httpMs}ms`);
+  console.log(
+    greetingFirstFrameMs === null
+      ? 'greeting: not delivered'
+      : `greeting: ${greetingFirstFrameMs}ms after ready (${greetingBytes}B)`
+  );
+  if (serverLatencies.length > 0) summarize('server-reported turn (badge)', serverLatencies);
 
   const metrics = await fetch(`http://localhost:${PORT}/api/v1/metrics`).then((r) => r.json());
   if (metrics.latency && Object.keys(metrics.latency).length > 0) {
@@ -266,7 +386,7 @@ const main = async () => {
   }
 
   console.log(
-    `\nJSON: ${JSON.stringify({ label: LABEL, protocol: PROTOCOL, readyMs, httpMs, turnLatencies })}`
+    `\nJSON: ${JSON.stringify({ label: LABEL, protocol: PROTOCOL, readyMs, httpMs, greetingFirstFrameMs, turnLatencies, serverLatencies })}`
   );
   process.exit(0);
 };

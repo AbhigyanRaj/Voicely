@@ -71,6 +71,18 @@ class StreamingTTSBase extends EventEmitter {
     }
   }
 
+  /**
+   * Speak something outside the reply, without disturbing the ordered queue.
+   *
+   * Default implementation does nothing: on the REST path an aside would have to
+   * take a sequence number, which would either delay the real reply behind it or
+   * break the ordering cursor. The streaming transport overrides this, and the
+   * backchannel is a nicety -- silently absent on the fallback path is correct.
+   */
+  speakAside(_text) {
+    /* overridden by the streaming transport */
+  }
+
   /** Called when the LLM stream has finished; emits whatever is left. */
   flush() {
     const tail = this.textBuffer.trim();
@@ -128,6 +140,11 @@ class StreamingTTSBase extends EventEmitter {
       audio = await this._synthesize(text);
     } catch (error) {
       logger.error(`[TTS ${this.metricLabel}] synthesis failed for "${text.slice(0, 40)}"`, error);
+      // Announced, not just logged. A swallowed failure here is indistinguishable
+      // from the agent having nothing to say: the user waits in silence, decides
+      // the product is broken, and nothing in the session ever says otherwise.
+      // The listener decides whether it is worth telling the user about.
+      this.emit('synthesisFailed', error);
     }
 
     // Barge-in landed while this request was in flight: drop it silently.

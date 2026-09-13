@@ -4,9 +4,14 @@ import DeepgramService from '../services/deepgramService.js';
 import Call from '../models/Call.js';
 import StreamingCallHandler from '../services/streamingCallHandler.js';
 import { createTTS } from '../services/ttsFactory.js';
-import { evaluateApplication, performDeepAnalysis } from '../config/gemini.js';
+import { performDeepAnalysis } from '../config/gemini.js';
 import { broadcastTranscriptUpdate, cleanupCallClients } from '../websocket/liveCallServer.js';
-import { record } from '../utils/latencyMetrics.js';
+import { record, count } from '../utils/latencyMetrics.js';
+import { greetingTextFor, getGreetingAudio, sliceGreeting } from '../services/greetingCache.js';
+import BargeInDetector from '../services/bargeInDetector.js';
+import { resolveLanguage } from '../config/languages.js';
+import { t } from '../config/callStrings.js';
+import Backchannel, { STABLE_FOR_MS } from '../services/backchannel.js';
 import logger from '../utils/logger.js';
 
 // Store active streaming sessions
@@ -23,6 +28,139 @@ const TURN_DEBOUNCE_MS = 120;
 
 
 /**
+ * Speak a short acknowledgement into the endpointing gap.
+ *
+ * Three things must NOT happen, and each is easy to get wrong:
+ *
+ *  1. It must not become the turn's first audio. `firstAudioSent` latches on the
+ *     first frame, so a backchannel would make turn.mouth_to_ear measure the
+ *     filler -- we would appear to have halved latency by measuring a different
+ *     thing. `suppressTurnAudio` keeps the real reply as the thing being timed.
+ *  2. It must not count as the agent speaking. If it did, the caller carrying on
+ *     with their sentence would trip barge-in, which aborts the speculation this
+ *     exists to cover for -- so the feature would destroy its own reason to run.
+ *  3. It must go out with `continue: true`. A false continuation closes the
+ *     Cartesia context while `_contextSeq` stays put, and the real reply then
+ *     streams into a context that is no longer open.
+ */
+const maybeBackchannel = (sessionData, interimText) => {
+  const bc = sessionData.backchannel;
+  const handler = sessionData.callHandler;
+  if (!bc || !handler || !sessionData.tts) return;
+
+  const normalized = handler.constructor._normalize
+    ? handler.constructor._normalize(interimText)
+    : String(interimText || '').toLowerCase().trim();
+
+  // Restart the silence clock whenever new words arrive. It has to be a timer:
+  // partials stop the moment someone stops talking, so "unchanged for 260ms" can
+  // never be seen by waiting for another partial to compare against.
+  if (!bc.noteInterim(normalized)) return;
+
+  if (sessionData.backchannelTimer) clearTimeout(sessionData.backchannelTimer);
+  sessionData.backchannelTimer = setTimeout(() => {
+    sessionData.backchannelTimer = null;
+    fireBackchannel(sessionData);
+  }, STABLE_FOR_MS);
+};
+
+/**
+ * Speak the acknowledgement, if the moment is still right.
+ *
+ * The gates are checked here rather than when the timer was armed, because the
+ * agent may have started speaking in the meantime.
+ */
+const fireBackchannel = (sessionData) => {
+  const bc = sessionData.backchannel;
+  const handler = sessionData.callHandler;
+  if (!bc || !handler || !sessionData.tts) return;
+
+  const ready = bc.canFire({
+    speculationInFlight: Boolean(handler.speculation),
+    agentSpeaking: sessionData.bargeIn.isAgentSpeaking(),
+  });
+  if (!ready) return;
+
+  const token = bc.take();
+  try {
+    // The two guards that keep this from quietly breaking things: the audio it
+    // produces is not the turn's first frame, and it does not count as the agent
+    // holding the floor. See the audio handler for what each one protects.
+    sessionData.suppressTurnAudio = true;
+    sessionData.backchannelAt = performance.now();
+    sessionData.tts.speakAside(token);
+    count('backchannel.spoken');
+    logger.debug(`Backchannel: "${token}"`);
+  } catch (err) {
+    sessionData.suppressTurnAudio = false;
+    logger.debug(`Backchannel failed: ${err.message}`);
+  }
+};
+
+/**
+ * Speak the session opener.
+ *
+ * Fire-and-forget: a greeting is a nicety, and nothing about the session depends
+ * on it, so this never blocks `ready` and never propagates a failure. Audio goes
+ * out over the same `media` frames the TTS path uses, so the client needs no new
+ * playback code for it.
+ */
+const playGreeting = async (ws, sessionData, callHandler, { voiceId, language, isWebCall, apiKey, streamSid, callId }) => {
+  try {
+    const text = greetingTextFor(callHandler.module, callHandler.voiceGender);
+    if (!text) return;
+
+    const startedAt = performance.now();
+    const entry = await getGreetingAudio({ voiceId, language, isWebCall, text, apiKey });
+    if (!entry) {
+      count('greeting.unavailable');
+      return;
+    }
+    if (ws.readyState !== ws.OPEN) return;
+
+    // Measured from the point the client was told the session was ready, which
+    // is when it starts listening. A warm cache makes this the wire time alone.
+    record('greeting.ready_to_audio', performance.now() - startedAt);
+
+    // Guards the barge-in path while the opener plays. Never initialized before,
+    // so the check that reads it was inert.
+    callHandler.isGreeting = true;
+
+    for (const frame of sliceGreeting(entry)) {
+      if (ws.readyState !== ws.OPEN) return;
+      // The greeting bypasses the tts 'audio' handler, so the barge-in detector
+      // has to be told about it here or it believes the agent is silent -- which
+      // makes the opening line the one stretch of the session that cannot be
+      // interrupted at all.
+      sessionData.bargeIn.noteAgentAudio(
+        Buffer.byteLength(frame.payload, 'base64'), frame.encoding, frame.sampleRate
+      );
+      ws.send(JSON.stringify({
+        event: 'media',
+        streamSid,
+        media: { payload: frame.payload, encoding: frame.encoding, sampleRate: frame.sampleRate },
+      }));
+    }
+
+    // Recorded in the conversation, or turn one greets the user all over again.
+    callHandler.noteGreetingSpoken(text);
+    broadcastTranscriptUpdate(callId, { source: 'ai', text, isFinal: true, turnId: 0 });
+
+    // Roughly how long the opener takes to play out, after which a genuine
+    // interrupt is just a normal turn again.
+    const bytesPerSample = entry.encoding === 'pcm_f32le' ? 4 : 1;
+    const durationMs = (entry.buffer.length / bytesPerSample / entry.sampleRate) * 1000;
+    sessionData.greetingTimer = setTimeout(() => {
+      callHandler.isGreeting = false;
+      sessionData.greetingTimer = null;
+    }, durationMs);
+  } catch (err) {
+    logger.warn(`Greeting playback failed: ${err.message}`);
+    callHandler.isGreeting = false;
+  }
+};
+
+/**
  * Handle call completion data extraction
  */
 const handleCallCompletion = async (callSid, sessionData) => {
@@ -36,7 +174,7 @@ const handleCallCompletion = async (callSid, sessionData) => {
     let module;
     if (call.demoAgentId) {
       const { getDemoAgentModule } = await import('../config/demoAgents.js');
-      const demoModule = getDemoAgentModule(call.demoAgentId);
+      const demoModule = getDemoAgentModule(call.demoAgentId, 'Female', call.selectedLanguage);
       if (!demoModule) return;
       module = {
         name: demoModule.name,
@@ -49,62 +187,51 @@ const handleCallCompletion = async (callSid, sessionData) => {
       if (!module) return;
     }
 
-    logger.info(`Extracting JSON answers for call ${callSid}...`);
-    // Extract questions array
+    logger.info(`Reading collections outcome for call ${callSid}...`);
     const questionsList = module.questions.sort((a, b) => a.order - b.order).map(q => q.question);
 
-    // The workspace lookup does not depend on the analysis, so overlap them
-    // rather than paying a database round trip before the first LLM call.
-    const [workspace, deepAnalysis] = await Promise.all([
-      import('../models/Workspace.js').then(m => m.default.findById(call.workspaceId)),
-      performDeepAnalysis(
-        sessionData.callHandler.chatHistory,
-        module.type || 'custom',
-        call.customerName,
-        module.systemPrompt || 'General Business Inquiry',
-        questionsList
-      )
-    ]);
-    const category = workspace?.category || 'startup';
-
-    // evaluateApplication consumes deepAnalysis.extractedData, so this one has
-    // to follow rather than run alongside.
-    // Evaluate application based on category with full transcript context
-    const evaluationStatus = await evaluateApplication(
-      module.type || 'custom',
-      deepAnalysis.extractedData,
-      category,
-      sessionData.callHandler.chatHistory
+    // One LLM call, not two. The old flow ran performDeepAnalysis and then
+    // evaluateApplication to turn its output into QUALIFIED / BOOKED / NURTURE --
+    // a sales verdict on a lead. A collections call's outcome IS the verdict, so
+    // the second round trip bought nothing and cost a turn of the rate limit.
+    const analysis = await performDeepAnalysis(
+      sessionData.callHandler.chatHistory,
+      'collections',
+      call.customerName,
+      module.systemPrompt || 'EMI reminder',
+      questionsList,
+      { today: new Date().toISOString().slice(0, 10) }
     );
 
-    logger.info(`Deep Analysis complete for call ${callSid}: ${deepAnalysis.sentiment} sentiment, Eval: ${evaluationStatus}`);
+    logger.info(
+      `Call ${callSid}: ${analysis.outcome}` +
+      (analysis.promisedOn ? ` on ${analysis.promisedOn}` : '') +
+      (analysis.escalate ? ' [needs a person]' : '')
+    );
+    count(`outcome.${analysis.outcome}`);
+    if (analysis.escalate) count('outcome.escalated');
 
-    // Update DB - Fix: Use nested evaluation structure per Call.js schema
-    call.evaluation = {
-      result: evaluationStatus,
-      timestamp: new Date(),
-      analysis: {
-        sentiment: deepAnalysis.sentiment,
-        objections: deepAnalysis.objections,
-        intentTier: deepAnalysis.intentTier,
-        extractedData: deepAnalysis.extractedData,
-        competitorMentioned: deepAnalysis.competitorMentioned,
-      },
-      stageAnalysis: {
-        totalQuestions: questionsList.length,
-        questionsReached: deepAnalysis.stageAnalysis?.questionsReached,
-        dropOffPoint: deepAnalysis.stageAnalysis?.dropOffPoint,
-      }
+    call.collections = {
+      outcome: analysis.outcome,
+      // Parsed here rather than stored as text so the desk can query "promises
+      // due today" without reading every row.
+      promisedOn: analysis.promisedOn ? new Date(analysis.promisedOn) : null,
+      promisedAmount: analysis.promisedAmount ?? null,
+      reason: analysis.reason ?? null,
+      rightPartyContact: Boolean(analysis.rightPartyContact),
+      escalate: Boolean(analysis.escalate),
+      escalateReason: analysis.escalateReason ?? null,
+      borrowerQuote: analysis.borrowerQuote ?? null,
+      language: call.selectedLanguage || null,
     };
-    
-    call.responses = deepAnalysis.extractedData;
-    call.summary = deepAnalysis.summary;
+
+    call.summary = analysis.summary;
     call.status = 'completed';
     call.duration = Math.floor((Date.now() - call.createdAt.getTime()) / 1000);
     call.transcription = sessionData.callHandler.chatHistory;
 
     await call.save();
-    logger.success(`Call ${callSid} analytics saved successfully. Questions: ${deepAnalysis.stageAnalysis?.questionsReached ?? '?'}/${questionsList.length}`);
+    logger.success(`Call ${callSid} saved. Questions reached: ${analysis.stageAnalysis?.questionsReached ?? '?'}/${questionsList.length}`);
 
 
 
@@ -159,6 +286,16 @@ export function setupMediaStreamWebSocket(server = null) {
     let streamSid = null;
     let callSid = null;
     let deepgramService = null;
+    // Errors can fire before the Call row is read -- "session not found" is
+    // precisely that case -- so the language for those messages comes from the
+    // socket URL rather than from the record we do not have.
+    const langHint = (() => {
+      try {
+        return new URL(req.url, `http://${req.headers.host}`).searchParams.get('language') || 'en-US';
+      } catch {
+        return 'en-US';
+      }
+    })();
     // Only what is actually read downstream. `partialTranscripts` used to
     // accumulate every interim result for the life of the session and was never
     // read; `finalTranscripts`, `currentUtterance` and `lastTranscriptTime` were
@@ -169,9 +306,20 @@ export function setupMediaStreamWebSocket(server = null) {
       turnStartedAt: null,
       firstAudioSent: false,
       lastPartialAt: null,
+      // First LLM token of the current turn, which splits the turn into the time
+      // spent thinking and the time spent starting to speak. Reported to the
+      // client so the latency badge can break itself down.
+      firstChunkAt: null,
+      // Identifies a turn across the two sockets: audio and timings go out on
+      // this one, the transcript on the live-call one.
+      turnId: 0,
       // Coalesced AI text for the transcript sidechannel.
       aiPartialText: '',
-      aiPartialTimer: null
+      aiPartialTimer: null,
+      // Decides when the user has genuinely interrupted the agent.
+      bargeIn: new BargeInDetector({ onSpurious: () => count('barge_in.spurious') }),
+      // Wire format of the inbound audio, so energy can be read off it.
+      inputEncoding: 'mulaw'
     };
     const connectedAt = performance.now();
 
@@ -186,7 +334,13 @@ export function setupMediaStreamWebSocket(server = null) {
         // as Buffers too, so testing the type would swallow the JSON control
         // messages as if they were audio.
         if (isBinary) {
-          if (message.length > 0 && deepgramService) deepgramService.sendAudio(message);
+          if (message.length > 0 && deepgramService) {
+            // Read energy here rather than have the client report it: every
+            // client is then gated identically, with no protocol change and
+            // nothing to trust from the far end.
+            sessionData.bargeIn.noteInputFrame(message, sessionData.inputEncoding);
+            deepgramService.sendAudio(message);
+          }
           return;
         }
 
@@ -239,10 +393,16 @@ export function setupMediaStreamWebSocket(server = null) {
                 const declaredRate = Number(url.searchParams.get('sampleRate'));
                 const isLinearClient =
                   isBrowserSandbox && Number.isFinite(declaredRate) && declaredRate > 0;
+                sessionData.inputEncoding = isLinearClient ? 'linear16' : 'mulaw';
+
+                // The session's language decides both the Deepgram model and the
+                // language code. nova-3 covers every Indian language we offer;
+                // English stays on the model its latency baseline was measured on.
+                const lang = resolveLanguage(call.selectedLanguage);
 
                 const connectionConfig = {
-                  language: 'en-US',
-                  model: process.env.DEEPGRAM_MODEL || 'nova-2-phonecall',
+                  language: lang.sttLang,
+                  model: lang.sttModel,
                   smart_format: true,
                   interim_results: true,
                   // 150ms rather than 300ms, with no_delay so Deepgram stops
@@ -252,12 +412,26 @@ export function setupMediaStreamWebSocket(server = null) {
                   endpointing: 150,
                   no_delay: true,
                   utterance_end_ms: '1000',
+                  // Deepgram's own voice activity detection. Off by default,
+                  // which is why SpeechStarted and UtteranceEnd never arrived --
+                  // utterance_end_ms was configured but inert.
+                  vad_events: true,
                   encoding: isLinearClient ? 'linear16' : 'mulaw',
                   sample_rate: isLinearClient ? declaredRate : 8000,
                   channels: 1,
                   punctuate: true,
-                  keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2']
                 };
+
+                // `keywords` is a nova-2 parameter. nova-3 rejects the whole
+                // connection with a 400 if it is present -- it uses `keyterm`
+                // instead, and only for English. The list was English words
+                // ("yes", "maybe", "interested") which did nothing for a Hindi
+                // call regardless, so it is scoped to the model that accepts it.
+                if (lang.sttModel.startsWith('nova-2')) {
+                  connectionConfig.keywords = [
+                    'yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2',
+                  ];
+                }
 
                 // Deepgram's handshake is ~900ms from here, so the connection is
                 // started now and awaited once every handler is attached, which
@@ -279,6 +453,10 @@ export function setupMediaStreamWebSocket(server = null) {
                 await callHandler.initialize(call);
                 
                 sessionData.callHandler = callHandler;
+                // Speaks into the window Deepgram spends deciding the caller has
+                // stopped -- the only part of the perceived delay our own speed
+                // cannot touch.
+                sessionData.backchannel = new Backchannel({ language: lang.sttLang });
                 // cleanupCallClients is keyed by the Mongo id, not the session sid.
                 sessionData.callId = call._id.toString();
 
@@ -295,7 +473,8 @@ export function setupMediaStreamWebSocket(server = null) {
                 // it is started here and awaited alongside Deepgram's handshake
                 // rather than in series with it.
                 const ttsPromise = createTTS({
-                    voiceId: call.selectedVoice || DEFAULT_VOICE_ID,
+                    voiceId: call.selectedVoice || lang.voiceId,
+                    language: lang.ttsLang,
                     isWebCall: isHighFidelity,
                     optimizeFor,
                     apiKey: ttsApiKey
@@ -307,9 +486,30 @@ export function setupMediaStreamWebSocket(server = null) {
                 if (typeof tts.on === 'function') {
                     tts.on('transportClosed', () =>
                         logger.warn(`TTS transport closed for ${callSid}`));
+
+                    // Tell the user when the voice fails, rather than leaving
+                    // them waiting on a reply that is never going to be spoken.
+                    // Cartesia returning 402 on an exhausted plan, or a socket
+                    // error mid-utterance, both land here; previously both were
+                    // logged server-side and looked like a broken product to
+                    // whoever was listening. Once per session, so a failing
+                    // provider does not spam the transcript.
+                    const reportVoiceFailure = () => {
+                      if (sessionData.voiceFailureReported) return;
+                      sessionData.voiceFailureReported = true;
+                      count('tts.session_failed');
+                      if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({
+                          event: 'voice_error',
+                          message: t('voiceUnavailable', lang.sttLang)
+                        }));
+                      }
+                    };
+                    tts.on('synthesisFailed', reportVoiceFailure);
+                    tts.on('transportError', reportVoiceFailure);
                 }
 
-                logger.info(`TTS Initialized: [Voice: ${call.selectedVoice || DEFAULT_VOICE_ID}] [Cartesia/${ttsTransport}]`);
+                logger.info(`TTS Initialized: [${lang.label}] [Voice: ${call.selectedVoice || lang.voiceId}] [Cartesia/${ttsTransport}]`);
 
                 // Set up TTS audio output handler
                 tts.on('audio', (audioData) => {
@@ -328,9 +528,56 @@ export function setupMediaStreamWebSocket(server = null) {
                     // the first audio of the reply reaching the wire. Recorded once
                     // per turn; barge-in resets the flag so the next turn measures
                     // cleanly.
-                    if (!sessionData.firstAudioSent && sessionData.turnStartedAt !== null) {
+                    // Aside audio is sent but never timed, and never counts as
+                    // the turn's first frame -- otherwise the headline number
+                    // would quietly start measuring a one-syllable filler.
+                    if (sessionData.suppressTurnAudio) {
+                      sessionData.suppressTurnAudio = false;
+                      if (sessionData.backchannelAt !== null && sessionData.backchannelAt !== undefined) {
+                        record('backchannel.ahead_of_reply', performance.now() - sessionData.backchannelAt);
+                        sessionData.backchannelAt = null;
+                      }
+                      ws.send(JSON.stringify({
+                        event: 'media', streamSid, media: { payload, encoding, sampleRate },
+                      }));
+                      return;
+                    }
+
+                    let turnLatency = null;
+                    if (!sessionData.firstAudioSent && sessionData.turnStartedAt !== null
+                        && !sessionData.suppressLatency) {
                       sessionData.firstAudioSent = true;
-                      record('turn.mouth_to_ear', performance.now() - sessionData.turnStartedAt);
+                      const now = performance.now();
+                      const total = now - sessionData.turnStartedAt;
+                      record('turn.mouth_to_ear', total);
+
+                      // Every boundary is already visible from here, so the stage
+                      // split costs nothing extra and needs no changes upstream.
+                      const thinkEnd = sessionData.firstChunkAt;
+                      turnLatency = {
+                        event: 'turn_latency',
+                        turnId: sessionData.turnId,
+                        ms: Math.round(total),
+                        stages: thinkEnd === null ? null : {
+                          think: Math.round(thinkEnd - sessionData.turnStartedAt),
+                          speak: Math.round(now - thinkEnd),
+                        },
+                      };
+                    }
+
+                    // Model the client's playout schedule, so "is the agent
+                    // speaking right now" is a fact rather than a guess. The
+                    // client queues each frame after the last, which is exactly
+                    // what the detector tracks.
+                    //
+                    // A backchannel is deliberately excluded: it is one syllable
+                    // spoken over the caller's tail, and treating it as the agent
+                    // holding the floor would make the caller finishing their own
+                    // sentence look like a barge-in.
+                    if (!sessionData.suppressTurnAudio) {
+                      sessionData.bargeIn.noteAgentAudio(
+                        Buffer.byteLength(payload, 'base64'), encoding, sampleRate
+                      );
                     }
 
                     ws.send(JSON.stringify({
@@ -338,6 +585,10 @@ export function setupMediaStreamWebSocket(server = null) {
                       streamSid: streamSid,
                       media: { payload: payload, encoding, sampleRate }
                     }));
+
+                    // Strictly after the audio it describes, so the badge can
+                    // never appear before the reply it belongs to.
+                    if (turnLatency) ws.send(JSON.stringify(turnLatency));
                   }
                 });
 
@@ -353,13 +604,15 @@ export function setupMediaStreamWebSocket(server = null) {
                   broadcastTranscriptUpdate(call._id.toString(), {
                     source: 'ai',
                     text: sessionData.aiPartialText,
-                    isFinal: false
+                    isFinal: false,
+                    turnId: sessionData.turnId
                   });
                 };
 
                 // Set up AI Event Handlers
                 callHandler.on('aiResponseChunk', (text) => {
                   tts.processTextChunk(text);
+                  if (sessionData.firstChunkAt === null) sessionData.firstChunkAt = performance.now();
                   sessionData.aiPartialText += text;
                   if (!sessionData.aiPartialTimer) {
                     sessionData.aiPartialTimer = setTimeout(flushAiPartial, 120);
@@ -373,10 +626,13 @@ export function setupMediaStreamWebSocket(server = null) {
                     sessionData.aiPartialTimer = null;
                   }
                   sessionData.aiPartialText = '';
-                  broadcastTranscriptUpdate(call._id.toString(), { source: 'ai', text: fullText, isFinal: true });
+                  broadcastTranscriptUpdate(call._id.toString(), {
+                    source: 'ai', text: fullText, isFinal: true, turnId: sessionData.turnId
+                  });
                 });
 
                 callHandler.on('callEnded', () => {
+                  sessionData.bargeIn.noteAgentSilent();
                   if (ws.readyState === ws.OPEN) {
                      ws.send(JSON.stringify({ event: 'end' }));
                   }
@@ -391,46 +647,73 @@ export function setupMediaStreamWebSocket(server = null) {
                   try {
                     sessionData.lastPartialAt = performance.now();
 
-                    // Barge-in logic
-                    if (data.text.trim().length > 1) {
-                      if (sessionData.callHandler && sessionData.callHandler.isGreeting) {
-                        logger.debug(`Ignoring barge-in during initial greeting sequence: "${data.text.trim()}"`);
-                      } else {
-                        logger.info(`Barge-in detected: "${data.text.trim()}"`);
-                        if (ws.readyState === ws.OPEN) {
-                          ws.send(JSON.stringify({ event: 'clear', streamSid }));
-                        }
-                        if (sessionData.tts) {
-                          if (typeof sessionData.tts.clear === 'function') {
-                            sessionData.tts.clear();
-                          } else {
-                            sessionData.tts.audioQueue = []; 
-                            sessionData.tts.textBuffer = '';
-                          }
-                        }
-                        if (sessionData.callHandler) {
-                          sessionData.callHandler.state = 'IDLE';
-                          // The interrupted turn's speculation answers a question
-                          // the user abandoned mid-sentence.
-                          sessionData.callHandler._abortSpeculation();
-                        }
-                        
-                        // Clear debouncer state to avoid cross-talk processing
-                        sessionData.bufferedTranscript = [];
-                        if (sessionData.silenceTimeout) {
-                          clearTimeout(sessionData.silenceTimeout);
-                          sessionData.silenceTimeout = null;
-                        }
-                        // The interrupted turn's timing is meaningless; let the
-                        // next one measure from its own start.
-                        sessionData.turnStartedAt = null;
-                        sessionData.firstAudioSent = false;
-                        if (sessionData.aiPartialTimer) {
-                          clearTimeout(sessionData.aiPartialTimer);
-                          sessionData.aiPartialTimer = null;
-                        }
-                        sessionData.aiPartialText = '';
+                    // Any further transcript is proof the user is still talking,
+                    // which clears a barge-in already on probation. Waiting for a
+                    // completed utterance instead marked long sentences spurious.
+                    if (data.text?.trim()) sessionData.bargeIn.noteSpeechConfirmed();
+
+                    // Barge-in. Gated on whether the agent is actually speaking,
+                    // on word count, on Deepgram's confidence and on input
+                    // energy -- see bargeInDetector for why each one is there.
+                    const verdict = sessionData.bargeIn.evaluate(data, {
+                      isGreeting: Boolean(sessionData.callHandler?.isGreeting),
+                    });
+
+                    if (verdict.barge) {
+                      logger.info(`Barge-in (${verdict.reason}): "${data.text.trim()}"`);
+                      count('barge_in.triggered');
+                      sessionData.bargeIn.noteTriggered();
+
+                      if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: 'clear', streamSid }));
                       }
+                      if (sessionData.tts) {
+                        if (typeof sessionData.tts.clear === 'function') {
+                          sessionData.tts.clear();
+                        } else {
+                          sessionData.tts.audioQueue = [];
+                          sessionData.tts.textBuffer = '';
+                        }
+                      }
+                      if (sessionData.callHandler) {
+                        // Not unconditionally: forcing IDLE used to resurrect a
+                        // session the time limit had already ENDED, so a stray
+                        // interim after the goodbye put the agent back to work.
+                        if (sessionData.callHandler.state !== 'ENDED') {
+                          sessionData.callHandler.state = 'IDLE';
+                        }
+                        // The interrupted turn's speculation answers a question
+                        // the user abandoned mid-sentence.
+                        sessionData.callHandler._abortSpeculation();
+                        sessionData.callHandler.isGreeting = false;
+                      }
+                      if (sessionData.greetingTimer) {
+                        clearTimeout(sessionData.greetingTimer);
+                        sessionData.greetingTimer = null;
+                      }
+
+                      // Clear debouncer state to avoid cross-talk processing
+                      sessionData.bufferedTranscript = [];
+                      if (sessionData.silenceTimeout) {
+                        clearTimeout(sessionData.silenceTimeout);
+                        sessionData.silenceTimeout = null;
+                      }
+                      // The interrupted turn's timing is meaningless; let the
+                      // next one measure from its own start.
+                      sessionData.turnStartedAt = null;
+                      sessionData.firstAudioSent = false;
+                      sessionData.firstChunkAt = null;
+                      if (sessionData.aiPartialTimer) {
+                        clearTimeout(sessionData.aiPartialTimer);
+                        sessionData.aiPartialTimer = null;
+                      }
+                      sessionData.aiPartialText = '';
+                      // The half-spoken sentence is never coming back, so the
+                      // client should stop showing it. Only audio was cleared
+                      // before, leaving the abandoned text on screen for good.
+                      broadcastTranscriptUpdate(call._id.toString(), {
+                        source: 'ai', text: '', isFinal: false, turnId: sessionData.turnId
+                      });
                     }
 
                     if (sessionData.callHandler) {
@@ -440,6 +723,11 @@ export function setupMediaStreamWebSocket(server = null) {
                       // Nothing is spoken unless the final transcript confirms it.
                       sessionData.callHandler.speculate(data.text, data.confidence);
                       broadcastTranscriptUpdate(call._id.toString(), { source: 'user', text: data.text, isFinal: false });
+
+                      // And fill the rest of that window with the sound a person
+                      // makes while you are still finishing. Gated on the reply
+                      // already being generated, so there is a real wait to cover.
+                      maybeBackchannel(sessionData, data.text);
                     }
                   } catch (err) {
                     logger.error('Error handling partial transcript', err);
@@ -449,6 +737,10 @@ export function setupMediaStreamWebSocket(server = null) {
                 deepgramService.on('finalTranscript', async (data) => {
                   const cleanedText = data.text?.trim();
                   if (!cleanedText) return;
+
+                  // The user did go on to say something, so any barge-in still
+                  // on probation was a real interrupt rather than noise.
+                  sessionData.bargeIn.noteSpeechConfirmed();
 
                   logger.debug(`Stream Segment Received: "${cleanedText}" (${(data.confidence * 100).toFixed(0)}%)`);
                   sessionData.bufferedTranscript.push(data);
@@ -476,7 +768,10 @@ export function setupMediaStreamWebSocket(server = null) {
                   // speech_final), which is where it still applies.
                   const debounceMs = data.speechFinal ? 0 : TURN_DEBOUNCE_MS;
 
-                  sessionData.silenceTimeout = setTimeout(async () => {
+                  // Named rather than inline so Deepgram's UtteranceEnd can
+                  // close the turn through the same path the debounce does,
+                  // instead of duplicating it.
+                  sessionData.closeTurn = async () => {
                     if (sessionData.bufferedTranscript.length === 0) return;
 
                     const fullUtterance = sessionData.bufferedTranscript.map(t => t.text).join(' ').trim();
@@ -489,6 +784,14 @@ export function setupMediaStreamWebSocket(server = null) {
                     // everything after this is our latency to answer.
                     sessionData.turnStartedAt = performance.now();
                     sessionData.firstAudioSent = false;
+                    sessionData.firstChunkAt = null;
+                    sessionData.suppressLatency = false;
+                    if (sessionData.backchannelTimer) {
+                      clearTimeout(sessionData.backchannelTimer);
+                      sessionData.backchannelTimer = null;
+                    }
+                    sessionData.backchannel?.reset();
+                    sessionData.turnId += 1;
 
                     logger.info(`[DEBOUNCER] Turn completed. Processing user utterance: "${fullUtterance}"`);
 
@@ -498,15 +801,61 @@ export function setupMediaStreamWebSocket(server = null) {
                         await sessionData.callHandler.processFinalTranscript(fullUtterance, averageConfidence);
                       } catch (aiError) {
                         logger.error('Error processing AI response in media stream:', aiError);
-                        // Fallback response to the user so they aren't left in silence
+                        count('turn.fallback_spoken');
+                        // Say something, in the language the call is being held
+                        // in. A turn lost to a provider error used to produce
+                        // nothing at all, and once it did produce something it
+                        // was English -- so a Hindi conversation was interrupted
+                        // by an English sentence, which is worse than silence.
+                        const errorFallback = t('didNotCatch', lang.sttLang);
+                        // Nothing about this turn is worth timing: the badge would
+                        // report how fast we synthesized a canned apology, which
+                        // makes a failure look like our quickest reply.
+                        sessionData.suppressLatency = true;
                         if (sessionData.tts) {
-                          const errorFallback = "I'm sorry, I'm having trouble processing that. Could you please repeat it?";
                           sessionData.tts.processTextChunk(errorFallback);
                           sessionData.tts.flush();
                         }
+                        // And show it, so the transcript matches what was heard.
+                        broadcastTranscriptUpdate(call._id.toString(), {
+                          source: 'ai', text: errorFallback, isFinal: true, turnId: sessionData.turnId
+                        });
                       }
                     }
+                  };
+
+                  sessionData.silenceTimeout = setTimeout(() => {
+                    sessionData.silenceTimeout = null;
+                    sessionData.closeTurn();
                   }, debounceMs);
+                });
+
+                // Deepgram's own end-of-utterance decision, which nothing has
+                // ever subscribed to: utterance_end_ms was set on the connection
+                // but no listener existed, so the signal it produces was thrown
+                // away and the application ran a debounce timer in its place.
+                //
+                // It is the backstop for the case the debounce cannot see: a
+                // segment finalized without speech_final, followed by silence.
+                // The debounce fires 120ms later and is usually first; when it
+                // is not -- Deepgram withheld speech_final because the audio was
+                // ambiguous -- this closes the turn instead of leaving the user
+                // waiting on a reply that was never going to start.
+                deepgramService.on('utteranceEnd', () => {
+                  if (sessionData.bufferedTranscript?.length > 0 && sessionData.silenceTimeout) {
+                    logger.debug('UtteranceEnd closed the turn ahead of the debounce');
+                    count('turn.closed_by_utterance_end');
+                    clearTimeout(sessionData.silenceTimeout);
+                    sessionData.silenceTimeout = null;
+                    sessionData.closeTurn?.();
+                  }
+                });
+
+                // Speech onset from Deepgram's VAD. Used only to keep the
+                // spurious-barge-in count honest: a barge-in that VAD agrees was
+                // speech is not a false positive even if no transcript follows.
+                deepgramService.on('speechStarted', () => {
+                  sessionData.bargeIn.noteSpeechConfirmed();
                 });
 
                 deepgramService.on('error', (error) => {
@@ -525,6 +874,10 @@ export function setupMediaStreamWebSocket(server = null) {
                   record('session.cold_start', performance.now() - connectedAt);
                 }
 
+                // The countdown the user watches starts when they are told the
+                // session is ready, so the server's clock has to start here too.
+                callHandler.startTimeLimit();
+
                 // Store session
                 activeSessions.set(callSid, {
                   ws,
@@ -533,13 +886,19 @@ export function setupMediaStreamWebSocket(server = null) {
                   streamSid
                 });
 
-                // Trigger initial AI greeting dynamically (Disabled per user request)
-                // try {
-                //   logger.info(`Triggering intelligent outbound greeting for ${call.customerName}`);
-                //   await callHandler.startGreeting();
-                // } catch (introErr) {
-                //   logger.error('Failed to send initial greeting', introErr);
-                // }
+                // The agent speaks first. Not via callHandler.startGreeting(),
+                // which asks the LLM for a line and then synthesizes it -- that
+                // puts two provider round trips in front of the first word the
+                // visitor ever hears. This opener is fixed per agent and cached,
+                // so it is a buffer slice away.
+                playGreeting(ws, sessionData, callHandler, {
+                  voiceId: call.selectedVoice || lang.voiceId,
+                  language: lang.ttsLang,
+                  isWebCall: isHighFidelity,
+                  apiKey: ttsApiKey,
+                  streamSid,
+                  callId: call._id.toString(),
+                });
               } else {
                 logger.error(`Critical Error: Call record not found for SID ${callSid}.`);
                 // Tell the client. Without this the sandbox modal sits on
@@ -549,7 +908,7 @@ export function setupMediaStreamWebSocket(server = null) {
                 if (ws.readyState === ws.OPEN) {
                   ws.send(JSON.stringify({
                     event: 'error',
-                    message: 'Could not find the session record. Please try again.'
+                    message: t('sessionNotFound', langHint)
                   }));
                 }
               }
@@ -558,7 +917,7 @@ export function setupMediaStreamWebSocket(server = null) {
               if (ws.readyState === ws.OPEN) {
                 ws.send(JSON.stringify({
                   event: 'error',
-                  message: 'The voice pipeline failed to start. Please try again.'
+                  message: t('pipelineFailed', langHint)
                 }));
               }
             }
@@ -568,7 +927,28 @@ export function setupMediaStreamWebSocket(server = null) {
           case 'media':
             // Twilio's base64-in-JSON envelope.
             if (deepgramService) {
-              deepgramService.sendAudio(Buffer.from(msg.media.payload, 'base64'));
+              const frame = Buffer.from(msg.media.payload, 'base64');
+              sessionData.bargeIn.noteInputFrame(frame, sessionData.inputEncoding);
+              deepgramService.sendAudio(frame);
+            }
+            break;
+
+          case 'update_prompt':
+            // Live persona editing. Applied to the next turn, not the one in
+            // flight -- see StreamingCallHandler.updateInstruction.
+            if (sessionData.callHandler && typeof msg.instruction === 'string') {
+              // Bounded: this goes into every LLM request for the rest of the
+              // session, and an unbounded string here is a way to make each of
+              // them arbitrarily expensive.
+              const instruction = msg.instruction.slice(0, 2000);
+              const result = sessionData.callHandler.updateInstruction(instruction);
+              if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({
+                  event: 'prompt_updated',
+                  applied: result.applied,
+                  queued: result.queued,
+                }));
+              }
             }
             break;
 
@@ -627,6 +1007,15 @@ export function setupMediaStreamWebSocket(server = null) {
           clearTimeout(sessionData.silenceTimeout);
           sessionData.silenceTimeout = null;
         }
+        if (sessionData.greetingTimer) {
+          clearTimeout(sessionData.greetingTimer);
+          sessionData.greetingTimer = null;
+        }
+        if (sessionData.backchannelTimer) {
+          clearTimeout(sessionData.backchannelTimer);
+          sessionData.backchannelTimer = null;
+        }
+        if (sessionData.bargeIn) sessionData.bargeIn.dispose();
 
         if (callSid) {
           // Just in case 'stop' wasn't sent

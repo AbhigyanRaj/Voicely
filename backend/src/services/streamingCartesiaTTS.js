@@ -12,18 +12,20 @@ class StreamingCartesiaTTS extends StreamingTTSBase {
         voiceId = '79a125e8-cd45-4c13-8a67-188112f4dd22',
         isWebCall = false,
         optimizeFor = 'latency',
-        apiKey = null
+        apiKey = null,
+        language = 'en'
     ) {
         super({ optimizeFor, metricLabel: 'cartesia' });
         this.voiceId = voiceId;
         this.isWebCall = isWebCall;
+        this.language = language;
         this.cartesiaService = new CartesiaService(apiKey);
     }
 
     async _synthesize(text) {
         if (this.isWebCall) {
             // 24 kHz float PCM for the browser sandbox.
-            const audioBuffer = await this.cartesiaService.synthesizePCM(text, 'en', this.voiceId, 24000);
+            const audioBuffer = await this.cartesiaService.synthesizePCM(text, this.language, this.voiceId, 24000);
             if (!audioBuffer) return null;
             return {
                 payload: audioBuffer.toString('base64'),
@@ -33,7 +35,7 @@ class StreamingCartesiaTTS extends StreamingTTSBase {
         }
 
         // 8 kHz mulaw for telephony.
-        const audioBuffer = await this.cartesiaService.synthesizeMulaw(text, 'en', this.voiceId);
+        const audioBuffer = await this.cartesiaService.synthesizeMulaw(text, this.language, this.voiceId);
         if (!audioBuffer) return null;
         return {
             payload: audioBuffer.toString('base64'),

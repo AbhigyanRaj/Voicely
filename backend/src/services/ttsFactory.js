@@ -12,13 +12,14 @@ import logger from '../utils/logger.js';
  *
  * @param {object}  options
  * @param {string}  options.voiceId
+ * @param {string}  options.language  Cartesia language code, e.g. 'hi'
  * @param {boolean} options.isWebCall
  * @param {string}  options.optimizeFor
  * @param {string?} options.apiKey
  * @returns {Promise<{tts: object, transport: 'websocket'|'rest'}>}
  */
-export const createTTS = async ({ voiceId, isWebCall, optimizeFor, apiKey }) => {
-  const streaming = new StreamingCartesiaWS({ voiceId, isWebCall, optimizeFor, apiKey });
+export const createTTS = async ({ voiceId, language = 'en', isWebCall, optimizeFor, apiKey }) => {
+  const streaming = new StreamingCartesiaWS({ voiceId, language, isWebCall, optimizeFor, apiKey });
 
   try {
     await streaming.connect();
@@ -27,7 +28,7 @@ export const createTTS = async ({ voiceId, isWebCall, optimizeFor, apiKey }) => 
     logger.warn(`Cartesia WebSocket unavailable, falling back to REST: ${err.message}`);
     streaming.close();
     return {
-      tts: new StreamingCartesiaTTS(voiceId, isWebCall, optimizeFor, apiKey),
+      tts: new StreamingCartesiaTTS(voiceId, isWebCall, optimizeFor, apiKey, language),
       transport: 'rest',
     };
   }

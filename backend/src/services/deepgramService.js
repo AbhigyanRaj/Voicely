@@ -60,11 +60,17 @@ class DeepgramService extends EventEmitter {
       sample_rate: 8000,
       channels: 1,
       punctuate: true,
-      // Keyword boosting for better accuracy on common responses
-      keywords: ['yes:2', 'no:2', 'maybe:2', 'sure:2', 'okay:2', 'interested:2', 'not interested:2'],
     };
 
     const connectionOptions = { ...defaultOptions, ...options };
+
+    // `keywords` is a nova-2 parameter; nova-3 rejects the entire connection
+    // with a 400 when it is present. It used to be an unconditional default
+    // here, which silently overrode any caller that tried to leave it out --
+    // so scoping it at the call site alone was not enough.
+    if (!String(connectionOptions.model || '').startsWith('nova-2')) {
+      delete connectionOptions.keywords;
+    }
 
     try {
       this.connection = this.deepgram.listen.live(connectionOptions);
@@ -145,6 +151,12 @@ class DeepgramService extends EventEmitter {
       // before, which is why the application had to run a second endpointer.
       this.connection.on(LiveTranscriptionEvents.UtteranceEnd, (data) => {
         this.emit('utteranceEnd', data);
+      });
+
+      // Speech onset, from Deepgram's VAD. Requires vad_events on the
+      // connection config; without it this never fires.
+      this.connection.on(LiveTranscriptionEvents.SpeechStarted, (data) => {
+        this.emit('speechStarted', data);
       });
 
       this.connection.on(LiveTranscriptionEvents.Metadata, (data) => {

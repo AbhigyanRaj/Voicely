@@ -41,6 +41,11 @@ class CartesiaService {
     const payload = {
       model_id: "sonic-3.5",
       transcript: text,
+      // Was accepted as an argument and then never sent, so every request was
+      // synthesized as English whatever the caller asked for. Harmless while
+      // English was the only language; silently ruinous for Devanagari, which
+      // Cartesia would have read as if it were Latin text.
+      language,
       voice: {
         mode: "id",
         id: voiceId
@@ -67,6 +72,11 @@ class CartesiaService {
     const payload = {
       model_id: "sonic-3.5",
       transcript: text,
+      // Was accepted as an argument and then never sent, so every request was
+      // synthesized as English whatever the caller asked for. Harmless while
+      // English was the only language; silently ruinous for Devanagari, which
+      // Cartesia would have read as if it were Latin text.
+      language,
       voice: {
         mode: "id",
         id: voiceId
