@@ -1,81 +1,133 @@
-import React from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Layers, BarChart3, Code, Settings, LogOut, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const STORAGE_KEY = 'voicely.sidebar.collapsed';
+
+/**
+ * Navigation for a collections desk.
+ *
+ * Ordered by the shape of the working day rather than by feature: what is
+ * happening now, what I am sending out, what came back, what the agent says
+ * when it calls.
+ *
+ * No icons in the expanded state -- in an editorial system the type does the
+ * work, and a row of stock glyphs beside Bodoni is the one thing that would
+ * give the page away as a template. Collapsed, each destination becomes its
+ * initial set in Bodoni: T, R, C, S are all distinct, so the letter is a real
+ * label rather than a decoration standing in for one.
+ */
 export const Sidebar: React.FC = () => {
   const { user, signOut } = useAuth();
   const location = useLocation();
+
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(STORAGE_KEY) === '1'; } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch { /* private window */ }
+  }, [collapsed]);
 
   const handleSignOut = async () => {
     try { await signOut(); } catch (e) { console.error('Sign out error:', e); }
   };
 
   const navItems = [
-    { name: 'Analytics', path: '/analytics', icon: <BarChart3 strokeWidth={1.5} className="w-5 h-5" /> },
-    { name: 'Voice Agents', path: '/modules', icon: <Layers strokeWidth={1.5} className="w-5 h-5" /> },
-    { name: 'Developers', path: '/developer', icon: <Code strokeWidth={1.5} className="w-5 h-5" /> },
-    { name: 'Settings', path: '/settings', icon: <Settings strokeWidth={1.5} className="w-5 h-5" /> },
+    { name: 'Today', path: '/today' },
+    { name: 'Runs', path: '/runs' },
+    { name: 'Conversations', path: '/conversations' },
+    { name: 'Scripts', path: '/scripts' },
   ];
-  return (
-    <div className="flex flex-col w-[60px] h-full bg-[#131313] border-r border-white/[0.03] text-zinc-300 flex-shrink-0 relative">
-      <div className="flex flex-col items-center h-full py-4">
-        
-        {/* Top Logo / Home Link */}
-        <Link 
-          to="/"
-          title="Back to Home"
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-[#222222] transition-colors mb-4"
-        >
-          <Home strokeWidth={1.5} className="w-5 h-5" />
-        </Link>
-        
-        {/* Center Nav Items */}
-        <nav className="flex-1 flex flex-col items-center gap-4 w-full">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              title={item.name}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center justify-center w-[38px] h-[38px] rounded-xl transition-all duration-300",
-                  isActive 
-                    ? "bg-[#222222] text-zinc-100 shadow-sm border border-white/[0.03]" 
-                    : "text-zinc-500 hover:text-zinc-200 hover:bg-[#222222]/50"
-                )
-              }
-            >
-              {React.cloneElement(item.icon as React.ReactElement<{ className?: string }>, {
-                className: cn(
-                  "w-5 h-5",
-                  location.pathname === item.path ? "text-zinc-200" : "text-zinc-500 group-hover:text-zinc-300"
-                )
-              })}
-            </NavLink>
-          ))}
-        </nav>
 
-        {/* Bottom Actions */}
-        <div className="mt-auto flex flex-col items-center gap-5">
-          <button 
-            onClick={handleSignOut} 
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-[#222222] transition-colors"
-            title="Sign out"
+  const rowClass = (isActive: boolean) =>
+    cn(
+      'flex items-center h-9 rounded-ui transition-colors',
+      collapsed ? 'justify-center px-0 mx-1' : 'px-3',
+      isActive
+        ? 'bg-paper-2 text-ink font-medium'
+        : 'text-ink-2 hover:text-ink hover:bg-paper-2/60'
+    );
+
+  return (
+    <div
+      className={cn(
+        'flex flex-col h-full bg-paper border-r border-rule shrink-0 transition-[width] duration-200',
+        collapsed ? 'w-[56px]' : 'w-[200px]'
+      )}
+    >
+      <div className={cn('flex items-center pt-6 pb-5', collapsed ? 'justify-center px-0' : 'px-6')}>
+        <span className="font-display text-[18px] font-semibold tracking-tight text-ink">
+          {collapsed ? 'V' : 'Voicely'}
+        </span>
+      </div>
+
+      <nav className="flex-1 px-2 space-y-0.5">
+        {navItems.map(({ name, path }) => (
+          <NavLink
+            key={name}
+            to={path}
+            title={collapsed ? name : undefined}
+            className={({ isActive }) => rowClass(isActive)}
           >
-            <LogOut strokeWidth={1.5} className="w-[18px] h-[18px]" />
-          </button>
-          
-          <div className="w-8 h-8 rounded-full bg-[#222222] flex items-center justify-center border border-white/5 cursor-pointer hover:ring-2 ring-white/10 transition-all relative" title={user?.email || 'User'}>
-            <span className="text-[10px] font-bold text-zinc-300 tracking-wider">
-              {user?.email?.substring(0, 2).toUpperCase() || 'US'}
+            {collapsed ? (
+              <span className="font-display text-[16px]">{name.charAt(0)}</span>
+            ) : (
+              <span className="text-[15px]">{name}</span>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="px-2 pb-3 pt-3 border-t border-rule">
+        <NavLink
+          to="/settings"
+          title={collapsed ? 'Settings' : undefined}
+          className={rowClass(location.pathname === '/settings')}
+        >
+          {collapsed ? (
+            <span className="font-display text-[16px]">S</span>
+          ) : (
+            <span className="text-[15px]">Settings</span>
+          )}
+        </NavLink>
+
+        {!collapsed && (
+          <div className="flex items-baseline gap-2 px-3 pt-3">
+            <span className="text-[13px] text-ink-3 truncate flex-1">
+              {user?.name || user?.email || 'Signed out'}
             </span>
-            {/* Claude-style notification dot */}
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 border-2 border-[#131313] rounded-full"></span>
+            <button
+              onClick={handleSignOut}
+              className="text-[13px] text-ink-3 hover:text-signal transition-colors shrink-0"
+            >
+              Sign out
+            </button>
           </div>
-        </div>
-        
+        )}
+
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          className={cn(
+            'flex items-center gap-2 h-8 mt-1 w-full rounded-ui text-ink-3 hover:text-ink hover:bg-paper-2/60 transition-colors',
+            collapsed ? 'justify-center' : 'px-3'
+          )}
+        >
+          {/* Drawn rather than imported: two strokes that mirror the panel
+              edge, so the control matches the rules used everywhere else. */}
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <rect x="0.5" y="1.5" width="13" height="11" rx="1.5" stroke="currentColor" />
+            <line
+              x1={collapsed ? '5' : '9'} y1="1.5"
+              x2={collapsed ? '5' : '9'} y2="12.5"
+              stroke="currentColor"
+            />
+          </svg>
+          {!collapsed && <span className="text-[13px]">Collapse</span>}
+        </button>
       </div>
     </div>
   );

@@ -151,8 +151,77 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+
+/* ============================================================================
+   Signal — the collections desk design system.
+
+   Chosen from three directions. The organising idea: what the borrower actually
+   SAID is the product. A call centre gives you a disposition code; this gives
+   you the sentence. So the interface is built like an editorial page rather
+   than a dashboard -- a light ground, one black band carrying the thing
+   happening right now, and a single vermilion accent that only ever marks
+   something a person has to deal with.
+
+   This replaces three unrelated dark palettes that were in play at once
+   (#050B14 in the layout, #0A1128 on mobile, #131313 in the sidebar, plus
+   zinc-950 and zinc-900 inline) and six competing border radii.
+   ========================================================================== */
+@theme {
+  /* Paper, ink, and the band. Warm-toned throughout: a neutral grey ground
+     makes the vermilion look cheap. */
+  --color-paper: #FBFAF7;
+  --color-paper-2: #F4F1EB;
+  --color-ink: #14110F;
+  --color-ink-2: #59524B;
+  --color-ink-3: #8C857D;
+  --color-rule: #E3DDD4;
+  --color-rule-strong: #CFC7BA;
+
+  /* Reserved for what needs a person: disputes, hardship, a call in flight.
+     Nothing decorative may use it, so seeing it always means the same thing. */
+  --color-signal: #C8452D;
+
+  /* Days past due -- the spine of the book. A single warm ramp, so a glance at
+     a row's colour states how old the debt is. */
+  --color-dpd-0: #E8C766;
+  --color-dpd-1: #D98B45;
+  --color-dpd-2: #C8452D;
+  --color-dpd-3: #7C2B3C;
+  --color-settled: #3F7D5C;
+
+  /* Two radii, chosen once. Editorial work wants corners close to square. */
+  --radius-ui: 3px;
+  --radius-panel: 4px;
+
+  /* Bodoni for display figures and headings -- high contrast, and its lining
+     numerals at 44px are the reason the promised-to-pay count reads from across
+     a desk. Archivo carries the interface. Noto Serif Devanagari matches
+     Bodoni's weight so a Hindi sentence and an English one sit together. */
+  --font-display: 'Bodoni Moda', 'Times New Roman', Georgia, serif;
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-deva: 'Noto Serif Devanagari', 'Bodoni Moda', serif;
+}
+
+/* Figures line up down a column. */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* A call in flight. The only animation in the chrome, so it reads as status. */
+@keyframes signal-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+.live-dot { animation: signal-pulse 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+}
+
+/* The landing page keeps Inter and its own dark, marquee-led look -- it is
+   marketing and has a different job from the product. Signal applies only
+   inside the dashboard, where DashboardLayout sets `font-sans` (Archivo). */
 html, body {
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer base {

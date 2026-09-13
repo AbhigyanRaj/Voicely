@@ -77,10 +77,31 @@ export const api = {
   },
 
   /** Session history. Pass a large limit for analytics: the default is 10. */
-  async getCallHistory(page = 1, limit = 200, status?: string, moduleId?: string) {
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (status) params.append('status', status);
-    if (moduleId) params.append('moduleId', moduleId);
+  /**
+   * The conversations list.
+   *
+   * Every filter here is served by the database. The previous version sent
+   * `status` and `moduleId` that the controller silently dropped, so the UI
+   * offered filters that did nothing.
+   */
+  async getCallHistory(opts: {
+    page?: number;
+    limit?: number;
+    outcome?: string[];
+    language?: string;
+    needsHuman?: boolean;
+    moduleId?: string;
+    search?: string;
+  } = {}) {
+    const params = new URLSearchParams({
+      page: String(opts.page ?? 1),
+      limit: String(opts.limit ?? 25),
+    });
+    if (opts.outcome?.length) params.set('outcome', opts.outcome.join(','));
+    if (opts.language) params.set('language', opts.language);
+    if (opts.needsHuman) params.set('needsHuman', 'true');
+    if (opts.moduleId) params.set('moduleId', opts.moduleId);
+    if (opts.search) params.set('search', opts.search);
     return apiFetch(`/calls/history?${params}`, { method: 'GET' });
   },
 };

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Menu, X, LogOut, Code, Layers, Settings, User, BarChart3 } from 'lucide-react';
 import { AuthModal } from './AuthModal';
-import CreateModule from './CreateModule';
 import { ArrowRight } from 'lucide-react';
 
 const landingNavItems = [
@@ -20,15 +19,15 @@ const Navbar: React.FC = () => {
   const { user, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState<null | 'signup' | 'login'>(null);
-  const [createModuleOpen, setCreateModuleOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const handleSignOut = async () => {
     try { await signOut(); } catch (e) { console.error('Sign out error:', e); }
   };
 
   const navItems = [
     { name: 'My Voice Agents', path: '/modules', icon: <Layers className="w-4 h-4" /> },
-    { name: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-4 h-4" /> },
+    { name: 'Dashboard', path: '/today', icon: <BarChart3 className="w-4 h-4" /> },
     { name: 'Developers', path: '/developer', icon: <Code className="w-4 h-4" /> },
     { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
   ];
@@ -75,9 +74,9 @@ const Navbar: React.FC = () => {
                       </button>
                     ) : (
                       <div className="flex items-center gap-4">
-                        <Link to="/analytics" className="text-[13px] text-zinc-600 hover:text-black font-medium transition-colors">Dashboard</Link>
+                        <Link to="/today" className="text-[13px] text-zinc-600 hover:text-black font-medium transition-colors">Dashboard</Link>
                         <button
-                          onClick={() => setCreateModuleOpen(true)}
+                          onClick={() => navigate('/scripts')}
                           className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium bg-white text-black border border-zinc-200 shadow-sm hover:shadow-md transition-all group"
                         >
                           Create Agent <ArrowRight className="w-3.5 h-3.5 bg-black text-white rounded-full p-0.5 group-hover:translate-x-0.5 transition-transform" />
@@ -114,7 +113,7 @@ const Navbar: React.FC = () => {
                         </Link>
                       ))}
                       <button
-                        onClick={() => setCreateModuleOpen(true)}
+                        onClick={() => navigate('/scripts')}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:text-white hover:bg-blue-600/20 transition-all hover:scale-[1.03] active:scale-[0.97]"
                       >
                         <Layers className="w-3.5 h-3.5 animate-pulse" />
@@ -187,9 +186,9 @@ const Navbar: React.FC = () => {
                     </button>
                   ) : (
                     <div className="space-y-2">
-                      <Link to="/analytics" onClick={() => setIsMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-zinc-600 hover:text-black">Dashboard</Link>
+                      <Link to="/today" onClick={() => setIsMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-zinc-600 hover:text-black">Dashboard</Link>
                       <button
-                        onClick={() => { setCreateModuleOpen(true); setIsMenuOpen(false); }}
+                        onClick={() => { navigate('/scripts'); setIsMenuOpen(false); }}
                         className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg text-sm font-medium bg-white text-black border border-zinc-200 shadow-sm hover:shadow-md transition-all"
                       >
                         Create Agent
@@ -216,7 +215,7 @@ const Navbar: React.FC = () => {
                           </Link>
                         ))}
                         <button
-                          onClick={() => { setCreateModuleOpen(true); setIsMenuOpen(false); }}
+                          onClick={() => { navigate('/scripts'); setIsMenuOpen(false); }}
                           className="flex items-center gap-3 w-full px-3 py-2 rounded-full text-sm font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:text-white hover:bg-blue-600/20 transition-all"
                         >
                           <Layers className="w-4 h-4" />
@@ -262,8 +261,6 @@ const Navbar: React.FC = () => {
         defaultTab={authModal === 'signup' ? 'signup' : 'login'}
         onClose={() => setAuthModal(null)}
       />
-
-      <CreateModule open={createModuleOpen} onClose={() => setCreateModuleOpen(false)} />
     </>
   );
 };

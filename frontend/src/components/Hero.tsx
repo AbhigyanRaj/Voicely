@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Mic, Github } from "lucide-react";
-import CreateModule from "./CreateModule";
 import { VoiceSandbox } from "./VoiceSandbox";
 import { AuthModal } from "./AuthModal";
 import { useAuth } from "../contexts/AuthContext";
@@ -16,7 +15,6 @@ import Navbar from "./Navbar";
 
 const Hero: React.FC = () => {
   const [authModal, setAuthModal] = useState<null | 'signup' | 'login'>(null);
-  const [createModuleOpen, setCreateModuleOpen] = useState(false);
   const [sandboxOpen, setSandboxOpen] = useState(false);
   
 
@@ -110,7 +108,7 @@ const Hero: React.FC = () => {
                 </button>
               ) : (
                 <Link 
-                  to="/analytics"
+                  to="/today"
                   className="group w-full sm:w-auto relative bg-white hover:bg-zinc-50 text-zinc-800 px-6 py-3.5 rounded-full font-medium text-[13px] flex items-center justify-center gap-2 shadow-sm border border-zinc-200 transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
                 >
                   Create Voice Agent
@@ -157,8 +155,6 @@ const Hero: React.FC = () => {
             onClose={() => setAuthModal(null)}
           />
         )}
-
-        <CreateModule open={createModuleOpen} onClose={() => setCreateModuleOpen(false)} />
         <VoiceSandbox open={sandboxOpen} onClose={() => setSandboxOpen(false)} />
       </main>
     </>

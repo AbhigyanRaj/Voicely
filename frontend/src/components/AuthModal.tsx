@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from './ui/modal';
@@ -31,13 +32,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, defaultTab = 'login'
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
-  // Close modal when user is successfully logged in
+  // Signing in used to just close the modal, leaving the user standing on the
+  // marketing page with no indication anything had happened. Take them into the
+  // product.
   useEffect(() => {
     if (user) {
       onClose();
+      navigate('/today');
     }
-  }, [user, onClose]);
+  }, [user, onClose, navigate]);
 
   // Reset form when tab switches
   const switchTab = (t: 'login' | 'signup') => {

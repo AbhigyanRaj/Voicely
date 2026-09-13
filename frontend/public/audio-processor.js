@@ -22,6 +22,11 @@ class AudioProcessor extends AudioWorkletProcessor {
     this.buffer = new Int16Array(this.bufferSize);
     this.bufferIndex = 0;
 
+    // Running sum of squares for the frame being filled. Level is computed from
+    // the samples already in hand rather than by re-reading the frame, so the
+    // mic meter and the barge-in energy gate both cost one multiply per sample.
+    this.sumSquares = 0;
+
     this.port.postMessage({ type: 'ready', sampleRate, frameSize: this.bufferSize });
   }
 
@@ -38,15 +43,21 @@ class AudioProcessor extends AudioWorkletProcessor {
       else if (sample < -1) sample = -1;
       // Asymmetric scaling: int16 holds -32768..32767.
       this.buffer[this.bufferIndex++] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      this.sumSquares += sample * sample;
 
       if (this.bufferIndex >= this.bufferSize) {
         // Copy, because the transfer hands ownership away and we keep reusing
         // this.buffer for the next frame.
         const frame = this.buffer.slice();
-        this.port.postMessage({ type: 'audio', buffer: frame.buffer, capturedAt: currentTime }, [
-          frame.buffer,
-        ]);
+        // RMS of the frame, 0..1. Drives the level meter on the setup screen and
+        // the energy gate that stops a cough from interrupting the agent.
+        const rms = Math.sqrt(this.sumSquares / this.bufferSize);
+        this.port.postMessage(
+          { type: 'audio', buffer: frame.buffer, capturedAt: currentTime, rms },
+          [frame.buffer]
+        );
         this.bufferIndex = 0;
+        this.sumSquares = 0;
       }
     }
 
