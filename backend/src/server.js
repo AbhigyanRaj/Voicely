@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import mongoose from 'mongoose';
 import logger from './utils/logger.js';
+import { assertModelsAvailable } from './config/gemini.js';
 import latencyMetrics from './utils/latencyMetrics.js';
 
 // Load environment variables FIRST - with explicit path
@@ -147,6 +148,9 @@ const startServer = async () => {
     logger.info(`STT (Deepgram): ${process.env.DEEPGRAM_API_KEY ? 'Enabled' : 'Disabled'}`);
     logger.info(`LLM (Groq): ${process.env.GROQ_API_KEY ? 'Enabled' : 'Disabled'}`);
     logger.info(`TTS (Cartesia): ${process.env.CARTESIA_API_KEY ? 'Enabled' : 'Disabled'}`);
+    // Fire and forget: a decommissioned model otherwise stays invisible
+    // until the first turn of the first call.
+    assertModelsAvailable();
     logger.info(`Environment: ${process.env.NODE_ENV}`);
 
     // Initialize WebSocket servers in noServer mode

@@ -1,41 +1,45 @@
-import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import SettingsPage from '../SettingsPage';
 
+const updateProfileName = vi.fn().mockResolvedValue({ _id: 'u1', name: 'New Name', email: 'a@b.com' });
+
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { _id: 'test-user', name: 'Test User' }, signOut: vi.fn() }),
+  useAuth: () => ({
+    user: { _id: 'u1', name: 'Test User', email: 'a@b.com', subscription: { tier: 'free' } },
+    setUser: vi.fn(),
+    signOut: vi.fn(),
+  }),
 }));
 
 vi.mock('../../lib/auth', () => ({
-  getStoredToken: () => 'fake-token',
+  updateProfileName: (...args: unknown[]) => updateProfileName(...args),
+  setStoredUser: vi.fn(),
 }));
 
-vi.mock('../../lib/api', () => ({
-  api: {
-    getWorkspaces: vi.fn().mockResolvedValue({ success: true, workspaces: [] }),
-  },
-}));
-
-vi.mock('../../lib/settings', () => ({
-  getProviders: vi.fn().mockResolvedValue([]),
-  saveProvider: vi.fn().mockResolvedValue({ success: true }),
-}));
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-});
+const renderPage = () =>
+  render(<BrowserRouter><SettingsPage /></BrowserRouter>);
 
 describe('SettingsPage', () => {
-  it('renders the SettingsPage correctly', () => {
-    render(
-      <QueryClientProvider client={queryClient}>
-        <SettingsPage />
-      </QueryClientProvider>
-    );
-
-    // /Settings/i alone matches the h1, the subtitle and "Account Settings".
+  it('shows the account facts it cannot change', () => {
+    renderPage();
     expect(screen.getByRole('heading', { level: 1, name: /^Settings$/i })).toBeInTheDocument();
-    expect(screen.getByText(/Manage your account/i)).toBeInTheDocument();
+    expect(screen.getByText('a@b.com')).toBeInTheDocument();
+    // Billing does not exist, so the page says so rather than offering a tab.
+    expect(screen.getByText(/no billing yet/i)).toBeInTheDocument();
+  });
+
+  it('only enables Save once the name actually changes', () => {
+    renderPage();
+
+    const save = screen.getByRole('button', { name: /^Save$/i });
+    expect(save).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/^Name$/i), { target: { value: 'New Name' } });
+    expect(save).toBeEnabled();
+
+    fireEvent.click(save);
+    expect(updateProfileName).toHaveBeenCalledWith('New Name');
   });
 });

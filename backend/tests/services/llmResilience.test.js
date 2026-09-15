@@ -4,7 +4,7 @@ import { parseRetryAfterMs } from '../../src/config/gemini.js';
 describe('parseRetryAfterMs', () => {
   it('reads the millisecond figure Groq names in a 429', () => {
     expect(parseRetryAfterMs(
-      'Rate limit reached for model `qwen/qwen3.6-27b` ... Please try again in 840ms. Need more tokens?'
+      'Rate limit reached for model `qwen/qwen3.8-27b` ... Please try again in 840ms. Need more tokens?'
     )).toBe(840);
   });
 

@@ -3,48 +3,51 @@ import { protect } from '../middleware/auth.js';
 import DeveloperKey from '../models/DeveloperKey.js';
 import logger from '../utils/logger.js';
 import crypto from 'crypto';
-import { testPipelineLatency } from '../utils/pipelineTest.js';
 import { encrypt } from '../utils/crypto.js';
 
 const router = express.Router();
 
-// Mock static options for the developer pipeline builder
-const PIPELINE_OPTIONS = {
-  stt: [
-    { id: 'deepgram-nova', name: 'Deepgram Nova-2', latency: 300, accuracy: 95, provider: 'Deepgram', description: 'Extremely fast and highly accurate STT' },
-    { id: 'google-stt', name: 'Google Cloud STT', latency: 450, accuracy: 92, provider: 'Google', description: 'Reliable and robust across multiple languages' },
-    { id: 'whisper-large', name: 'OpenAI Whisper v3', latency: 800, accuracy: 98, provider: 'OpenAI', description: 'Highest accuracy, slightly higher latency' },
-    { id: 'assembly-ai', name: 'AssemblyAI Conformer', latency: 600, accuracy: 94, provider: 'AssemblyAI', description: 'Great for noisy environments and speaker diarization', isComingSoon: true },
-    { id: 'azure-speech', name: 'Azure Speech-to-Text', latency: 400, accuracy: 93, provider: 'Microsoft', description: 'Enterprise-grade speech recognition', isComingSoon: true }
-  ],
-  llm: [
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', latency: 400, accuracy: 90, provider: 'Google', description: 'Lightning fast reasoning for real-time voice' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', latency: 700, accuracy: 96, provider: 'Google', description: 'Deep reasoning with massive context window' },
-    { id: 'gpt-4o', name: 'GPT-4o (Omni)', latency: 550, accuracy: 95, provider: 'OpenAI', description: 'State-of-the-art multimodal reasoning' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', latency: 350, accuracy: 92, provider: 'OpenAI', description: 'Great balance of speed and intelligence' },
-    { id: 'claude-3-haiku', name: 'Claude 3.5 Haiku', latency: 300, accuracy: 93, provider: 'Anthropic', description: 'Fast, articulate, and conversational' },
-    { id: 'claude-3-sonnet', name: 'Claude 3.5 Sonnet', latency: 600, accuracy: 97, provider: 'Anthropic', description: 'Exceptional intelligence and human-like nuance' },
-    { id: 'deepseek-v3', name: 'DeepSeek V3', latency: 450, accuracy: 95, provider: 'DeepSeek', description: 'Highly capable open-weight reasoning model', isComingSoon: true },
-    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', latency: 200, accuracy: 91, provider: 'Groq', description: 'Instant, ultra-low latency open-weights model' }
-  ],
-  tts: [
-    { id: 'sarvam-aura', name: 'Sarvam Aura', latency: 250, accuracy: 94, provider: 'Sarvam', description: 'Optimized for Indian languages and accents' },
-    { id: 'elevenlabs-turbo', name: 'ElevenLabs Turbo 2.5', latency: 400, accuracy: 98, provider: 'ElevenLabs', description: 'Most expressive and realistic human voices' },
-    { id: 'elevenlabs-flash', name: 'ElevenLabs Flash', latency: 200, accuracy: 92, provider: 'ElevenLabs', description: 'Ultra-low latency for conversational AI' },
-    { id: 'cartesia-sonic', name: 'Cartesia Sonic', latency: 150, accuracy: 95, provider: 'Cartesia', description: 'The absolute fastest TTS for real-time applications' },
-    { id: 'google-neural', name: 'Google Neural2', latency: 350, accuracy: 90, provider: 'Google', description: 'Consistent and reliable standard TTS' },
-    { id: 'playht', name: 'PlayHT 2.0', latency: 450, accuracy: 95, provider: 'PlayHT', description: 'Hyper-realistic emotional voices', isComingSoon: true },
-    { id: 'amazon-polly', name: 'Amazon Polly Neural', latency: 400, accuracy: 91, provider: 'Amazon', description: 'AWS Neural voices with deep integrations', isComingSoon: true }
-  ]
-};
+/**
+ * What a developer key can actually change.
+ *
+ * This block used to hold twenty "models" with a `latency` and an `accuracy`
+ * on each -- Claude 3.5 Sonnet at 97%, Cartesia Sonic at 150ms -- none of them
+ * measured, and the dashboard summed and averaged them into an "Estimated
+ * Latency" and an "Average Accuracy" it showed as fact. Two of the entries were
+ * already decommissioned, including the llama model whose removal took the
+ * whole pipeline down.
+ *
+ * Only the LLM is really selectable: developerStreamServer routes on the model
+ * string. STT is Deepgram and TTS is Cartesia, both fixed in that file, so
+ * offering a choice of either was decoration. No latency or accuracy figures
+ * appear here, because none have been measured per model.
+ */
+const LLM_OPTIONS = [
+  { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B', provider: 'Groq', note: 'What Voicely itself runs' },
+  { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', provider: 'Groq' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google' },
+];
+
+/** Fixed, because developerStreamServer hardcodes both. */
+const FIXED_STT_MODEL = 'nova-3';
+const FIXED_TTS_MODEL = 'sonic-3.5';
 
 /**
  * @route   GET /api/developer/options
- * @desc    Get dynamic options for the pipeline builder
+ * @desc    What a key may be configured with
  * @access  Private
  */
 router.get('/options', protect, (req, res) => {
-  res.json({ success: true, options: PIPELINE_OPTIONS });
+  res.json({
+    success: true,
+    options: {
+      llm: LLM_OPTIONS,
+      stt: { model: FIXED_STT_MODEL, provider: 'Deepgram', fixed: true },
+      tts: { model: FIXED_TTS_MODEL, provider: 'Cartesia', fixed: true },
+    },
+  });
 });
 
 /**
@@ -75,10 +78,22 @@ router.get('/keys', protect, async (req, res) => {
 router.post('/keys', protect, async (req, res) => {
   try {
     const { name, pipelineConfig, providerKeys } = req.body;
-    
-    if (!pipelineConfig || !pipelineConfig.sttModel || !pipelineConfig.llmModel || !pipelineConfig.ttsModel) {
-      return res.status(400).json({ success: false, error: 'Incomplete pipeline configuration' });
+
+    // Only the LLM is a choice. STT and TTS are filled in from what the stream
+    // server actually uses rather than demanded from a caller who has no say.
+    const llmModel = pipelineConfig?.llmModel;
+    if (!llmModel || !LLM_OPTIONS.some(o => o.id === llmModel)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unknown llmModel',
+        supported: LLM_OPTIONS.map(o => o.id),
+      });
     }
+    const resolvedConfig = {
+      sttModel: FIXED_STT_MODEL,
+      llmModel,
+      ttsModel: FIXED_TTS_MODEL,
+    };
 
     // Encrypt the provider keys
     const encryptedProviderCredentials = new Map();
@@ -107,14 +122,9 @@ router.post('/keys', protect, async (req, res) => {
       keyHash,
       keyPrefix,
       name: name || 'Custom Pipeline',
-      pipelineConfig,
+      pipelineConfig: resolvedConfig,
       providerCredentials: encryptedProviderCredentials
     });
-
-    // Latency for this pipeline: the measured p50 of real turns when we have
-    // enough of them, otherwise a provider-ping estimate. `latencySource` says
-    // which, so the UI can stop calling an estimate "Tested".
-    const latency = await testPipelineLatency(pipelineConfig, PIPELINE_OPTIONS);
 
     // Send the raw key ONLY once. It cannot be retrieved again.
     res.json({
@@ -130,9 +140,6 @@ router.post('/keys', protect, async (req, res) => {
         pipelineConfig: newKey.pipelineConfig,
         createdAt: newKey.createdAt,
       },
-      actualLatency: latency.latencyMs,
-      latencySource: latency.source,
-      latencySamples: latency.samples
     });
 
   } catch (error) {

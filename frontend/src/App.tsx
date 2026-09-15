@@ -71,6 +71,10 @@ function App() {
                   } />
                   {/* The agent builder lives at /scripts now. */}
                   <Route path="/modules" element={<Navigate to="/scripts" replace />} />
+                  {/* Runs never had a route, so the sidebar link that pointed
+                      here fell through to the dark 404 outside the shell. The
+                      link is gone; this catches anyone who bookmarked it. */}
+                  <Route path="/runs" element={<Navigate to="/today" replace />} />
                   <Route path="/analytics" element={<Navigate to="/today" replace />} />
                   <Route path="/settings" element={
                     <ProtectedRoute>

@@ -35,19 +35,62 @@ const getGeminiModel = (apiKey, modelName) => {
 // both now return 404 model_not_found, which took the conversational pipeline
 // and all post-call analysis down completely.
 //
+// This has now happened twice. `qwen/qwen3.6-27b` went the same way on
+// 2026-09-16: every turn 404'd, so every turn fell through to the "didn't catch
+// that" fallback and the call was unusable while STT and TTS were both fine.
+// Hence the env override and the startup check in assertModelsAvailable() --
+// the next decommissioning should be a loud warning at boot, not a dead call.
+//
 // Measured TTFT over the models the account can currently reach:
-//   qwen/qwen3.6-27b     112ms   (with reasoning_effort 'none')
+//   qwen/qwen3.8-27b     209ms   (with reasoning_effort 'none')
 //   groq/compound-mini   906ms
 //   openai/gpt-oss-20b   spends its first tokens on a reasoning channel
 //
 // `reasoning_effort: 'none'` matters: without it qwen streams a <think> block,
 // which would be fed straight to TTS and spoken aloud.
-const REALTIME_LLM_MODEL = 'qwen/qwen3.6-27b';
+const REALTIME_LLM_MODEL = process.env.GROQ_REALTIME_MODEL || 'qwen/qwen3.8-27b';
 const REALTIME_REASONING_EFFORT = 'none';
 
 // Post-call analysis. Latency is irrelevant here, but it has to return
 // parseable JSON, which this model does.
-export const ANALYSIS_LLM_MODEL = 'qwen/qwen3.6-27b';
+export const ANALYSIS_LLM_MODEL = process.env.GROQ_ANALYSIS_MODEL || 'qwen/qwen3.8-27b';
+
+/**
+ * Check at boot that the pinned models still exist.
+ *
+ * A decommissioned model is invisible until the first turn of the first call,
+ * where it surfaces as a spoken apology rather than an error anyone sees. One
+ * GET at startup turns that into a log line before a borrower is on the phone.
+ * Never throws: a provider blip must not stop the server from booting.
+ */
+export const assertModelsAvailable = async () => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      logger.warn(`Could not verify Groq models (HTTP ${res.status}); continuing`);
+      return;
+    }
+    const available = new Set(((await res.json()).data || []).map(m => m.id));
+    for (const model of new Set([REALTIME_LLM_MODEL, ANALYSIS_LLM_MODEL])) {
+      if (available.has(model)) {
+        logger.info(`Groq model ${model}: available`);
+      } else {
+        logger.error(
+          `Groq model ${model} is NOT available to this key -- every turn will ` +
+          `404 and callers will hear the "didn't catch that" fallback. ` +
+          `Set GROQ_REALTIME_MODEL / GROQ_ANALYSIS_MODEL to one of: ` +
+          `${[...available].filter(m => !m.startsWith('whisper')).join(', ')}`
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn(`Could not verify Groq models (${err.message}); continuing`);
+  }
+};
 
 /**
  * Universal fallback handler for Gemini generative API requests.

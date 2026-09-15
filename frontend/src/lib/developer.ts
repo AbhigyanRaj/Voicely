@@ -1,20 +1,33 @@
 import { getApiBaseUrl } from './api';
 import { getStoredToken } from './auth';
 
-export interface PipelineModelOption {
+/**
+ * Developer keys.
+ *
+ * `PipelineModelOption` used to carry `latency` and `accuracy` per model. Those
+ * numbers were hardcoded on the server and never measured, and the page summed
+ * them into an "Estimated Latency" and averaged them into an "Average Accuracy"
+ * that it presented as fact. Both fields are gone; nothing replaces them,
+ * because nothing has been measured per model.
+ */
+export interface LlmOption {
   id: string;
   name: string;
-  latency: number;
-  accuracy: number;
   provider: string;
-  description: string;
-  isComingSoon?: boolean;
+  note?: string;
+}
+
+/** STT and TTS are fixed in developerStreamServer, so they are stated, not chosen. */
+export interface FixedStage {
+  model: string;
+  provider: string;
+  fixed: true;
 }
 
 export interface PipelineOptions {
-  stt: PipelineModelOption[];
-  llm: PipelineModelOption[];
-  tts: PipelineModelOption[];
+  llm: LlmOption[];
+  stt: FixedStage;
+  tts: FixedStage;
 }
 
 export interface DeveloperKey {
@@ -30,70 +43,52 @@ export interface DeveloperKey {
   lastUsedAt?: string;
 }
 
-export const getPipelineOptions = async (): Promise<PipelineOptions> => {
+const authHeaders = () => {
   const token = getStoredToken();
   if (!token) throw new Error('Not authenticated');
+  return { Authorization: `Bearer ${token}` };
+};
 
-  const res = await fetch(`${getApiBaseUrl()}/developer/options`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error('Failed to fetch options');
-  const data = await res.json();
-  return data.options;
+export const getPipelineOptions = async (): Promise<PipelineOptions> => {
+  const res = await fetch(`${getApiBaseUrl()}/developer/options`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Could not load the pipeline options');
+  return (await res.json()).options;
 };
 
 export const getDeveloperKeys = async (): Promise<DeveloperKey[]> => {
-  const token = getStoredToken();
-  if (!token) throw new Error('Not authenticated');
-
-  const res = await fetch(`${getApiBaseUrl()}/developer/keys`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error('Failed to fetch keys');
-  const data = await res.json();
-  return data.keys;
+  const res = await fetch(`${getApiBaseUrl()}/developer/keys`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Could not load your keys');
+  return (await res.json()).keys;
 };
 
+/**
+ * The raw key comes back exactly once and is never retrievable again: the
+ * server stores only a SHA-256 hash of it.
+ */
 export const generateDeveloperKey = async (
   name: string,
-  sttModel: string,
   llmModel: string,
-  ttsModel: string,
   providerKeys: Record<string, string>
-): Promise<{ key: string; keyRecord: DeveloperKey, actualLatency?: number }> => {
-  const token = getStoredToken();
-  if (!token) throw new Error('Not authenticated');
-
+): Promise<{ key: string; keyRecord: DeveloperKey }> => {
   const res = await fetch(`${getApiBaseUrl()}/developer/keys`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      name,
-      pipelineConfig: { sttModel, llmModel, ttsModel },
-      providerKeys
-    })
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, pipelineConfig: { llmModel }, providerKeys }),
   });
 
   if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.error || 'Failed to generate key');
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Could not create the key');
   }
 
   const data = await res.json();
-  return { key: data.key, keyRecord: data.keyRecord, actualLatency: data.actualLatency };
+  return { key: data.key, keyRecord: data.keyRecord };
 };
 
 export const deleteDeveloperKey = async (keyId: string): Promise<void> => {
-  const token = getStoredToken();
-  if (!token) throw new Error('Not authenticated');
-
   const res = await fetch(`${getApiBaseUrl()}/developer/keys/${keyId}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(),
   });
-
-  if (!res.ok) throw new Error('Failed to delete key');
+  if (!res.ok) throw new Error('Could not revoke the key');
 };

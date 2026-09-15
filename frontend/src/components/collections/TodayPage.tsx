@@ -169,6 +169,62 @@ const Performance: React.FC<{ performance: AgentPerformance }> = ({ performance 
   );
 };
 
+/**
+ * Where the product actually is.
+ *
+ * The first-run screen used to end after the three steps and leave half a
+ * viewport of nothing, which reads as broken rather than as early. This says
+ * plainly what works and what does not, so the missing phone line is understood
+ * as the shape of this build.
+ *
+ * Every line here is checked against something real: the languages come from
+ * the server registry, and the reply time is a measured p50, not a target. If
+ * one of these stops being true, change it -- a confident sentence about a
+ * capability we do not have is exactly what the old dashboard did.
+ */
+const WhereThisIs: React.FC = () => {
+  const working: [string, string][] = [
+    ['Six languages', 'हिन्दी · मराठी · தமிழ் · తెలుగు · বাংলা · English'],
+    ['It answers in about ¾ of a second', 'measured end to end, from your last word to its first'],
+    ['It captures the promise', 'the date, the reason they gave, and their own words'],
+  ];
+
+  const notYet: [string, string][] = [
+    ['Outbound dialling', 'there is no phone line; you call the agent from the browser'],
+    ['Uploading a borrower list', 'borrower details are entered per call for now'],
+    ['Scheduling, retries and recordings', 'nothing is queued, repeated or stored as audio'],
+  ];
+
+  const Column: React.FC<{ title: string; rows: [string, string][]; muted?: boolean }> = ({
+    title, rows, muted,
+  }) => (
+    <div>
+      <div className="text-[13px] text-ink-3 mb-4">{title}</div>
+      <div className="space-y-4">
+        {rows.map(([head, body]) => (
+          <div key={head}>
+            <div className={`text-[15px] mb-0.5 ${muted ? 'text-ink-2' : 'text-ink'}`}>{head}</div>
+            <p className="text-[13px] text-ink-3 leading-relaxed">{body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="border-t border-rule px-6 lg:px-10 py-8">
+      <h2 className="font-display text-[18px] font-semibold mb-1">Where this is</h2>
+      <p className="text-[14px] text-ink-2 leading-relaxed mb-7 max-w-[56ch]">
+        An early build. The conversation is real; the plumbing around it isn’t finished.
+      </p>
+      <div className="grid gap-8 sm:grid-cols-2 max-w-[74ch]">
+        <Column title="Working now" rows={working} />
+        <Column title="Not built yet" rows={notYet} muted />
+      </div>
+    </section>
+  );
+};
+
 /** What else came back, in the borrower's own words. */
 const AlsoSaid: React.FC<{ rows: Conversation[] }> = ({ rows }) => (
   <div className="space-y-5">
@@ -276,6 +332,9 @@ export const TodayPage: React.FC = () => {
           </div>
         </>
       )}
+
+      <WhereThisIs />
+
       <VoiceSandbox
         open={testing}
         onClose={() => {

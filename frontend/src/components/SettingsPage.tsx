@@ -1,63 +1,138 @@
-import { User, CreditCard, Bell } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { updateProfileName, setStoredUser } from '../lib/auth';
 
-const SettingsPage = () => {
-  const { user } = useAuth();
+/**
+ * Settings.
+ *
+ * The previous version was theatre. It offered Billing and Notifications as
+ * `cursor-not-allowed` buttons with no handler, a disabled email field, and a
+ * "Save Changes" button with no onClick -- a form that could not be filled in,
+ * above a button that saved nothing. It also sat on zinc-950 while the rest of
+ * the desk is paper, so the two halves of the screen looked like two products.
+ *
+ * What is left is what is true: the one field the server will actually change
+ * (`PUT /auth/profile` takes `name` and nothing else), the facts about the
+ * account it will not, and the places worth going next. Sections that do not
+ * exist are not drawn as disabled tabs -- an empty promise costs more than a
+ * missing one.
+ */
+
+/** A labelled fact the user cannot edit. Stated, with the reason. */
+const Fact: React.FC<{ label: string; value: string; note?: string }> = ({ label, value, note }) => (
+  <div className="py-4 border-b border-rule">
+    <div className="text-[13px] text-ink-3 mb-1">{label}</div>
+    <div className="text-[15px] text-ink">{value}</div>
+    {note && <p className="text-[13px] text-ink-3 mt-1 leading-relaxed">{note}</p>}
+  </div>
+);
+
+export const SettingsPage: React.FC = () => {
+  const { user, setUser, signOut } = useAuth();
+
+  const [name, setName] = useState(user?.name || '');
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = name.trim() !== (user?.name || '').trim() && name.trim().length > 0;
+
+  const save = async () => {
+    if (!dirty) return;
+    setState('saving');
+    setError(null);
+    try {
+      const updated = await updateProfileName(name.trim());
+      // Both, or the sidebar keeps the old name until the next reload.
+      setUser(updated);
+      setStoredUser(updated);
+      setState('saved');
+      setTimeout(() => setState('idle'), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your name');
+      setState('idle');
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-zinc-950 pt-24 pb-12 px-4 sm:px-6 relative overflow-hidden font-sans text-zinc-300">
-      <div className="max-w-4xl mx-auto w-full relative z-10">
-        <div className="mb-10 border-b border-white/[0.04] pb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Preferences</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-2">Settings</h1>
-          <p className="text-zinc-500 text-sm max-w-lg leading-relaxed">
-            Manage your account settings, billing, and notification preferences.
-          </p>
-        </div>
+    <div className="min-h-full bg-paper">
+      <header className="px-6 lg:px-9 pt-7 pb-4 border-b border-rule">
+        <h1 className="font-display text-[27px] font-semibold tracking-tight">Settings</h1>
+      </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="md:col-span-1 space-y-1">
-            <button className="w-full flex items-center gap-3 px-3 py-2 bg-transparent border border-white/[0.08] rounded-md text-white font-medium text-[13px]">
-              <User className="w-4 h-4 text-zinc-400" />
-              Account
-            </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/[0.02] rounded-md text-zinc-500 font-medium text-[13px] transition-colors cursor-not-allowed">
-              <CreditCard className="w-4 h-4 text-zinc-500" />
-              Billing
-            </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/[0.02] rounded-md text-zinc-500 font-medium text-[13px] transition-colors cursor-not-allowed">
-              <Bell className="w-4 h-4 text-zinc-500" />
-              Notifications
-            </button>
-          </div>
-          
-          <div className="md:col-span-3">
-            <div className="bg-zinc-900/40 border border-white/[0.04] rounded-lg p-6 sm:p-8 relative overflow-hidden">
-              <h2 className="text-lg font-semibold text-white mb-8 tracking-tight">Account Settings</h2>
-              
-              <div className="space-y-6">
-                <div>
-                  <label className="text-[12px] font-semibold text-zinc-500 mb-2 block uppercase tracking-wider">Email Address</label>
-                  <input 
-                    type="email" 
-                    className="w-full max-w-md bg-zinc-900/50 border border-white/[0.1] rounded-md px-3 h-10 text-zinc-400 text-[13px] focus:outline-none transition-colors cursor-not-allowed"
-                    value={user?.email || "you@example.com"}
-                    disabled
-                  />
-                  <p className="text-[12px] text-zinc-500 mt-2">Your email address cannot be changed right now.</p>
-                </div>
-                
-                <div className="pt-6 border-t border-white/[0.08]">
-                  <button className="px-4 h-9 bg-white text-black text-[13px] font-semibold rounded-md hover:bg-zinc-200 transition-colors">
-                    Save Changes
-                  </button>
-                </div>
-              </div>
+      <div className="px-6 lg:px-9 py-7 max-w-[62ch]">
+
+        <section className="mb-9">
+          <h2 className="font-display text-[18px] font-semibold mb-4">Your account</h2>
+
+          <div className="py-4 border-b border-rule">
+            <label htmlFor="display-name" className="text-[13px] text-ink-3 mb-1.5 block">
+              Name
+            </label>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <input
+                id="display-name"
+                value={name}
+                onChange={e => { setName(e.target.value); setState('idle'); }}
+                onKeyDown={e => { if (e.key === 'Enter') save(); }}
+                className="flex-1 min-w-[200px] border border-rule rounded-ui px-3.5 h-10 text-[15px] bg-white focus:outline-none focus:border-ink transition-colors"
+              />
+              <button
+                onClick={save}
+                disabled={!dirty || state === 'saving'}
+                className="bg-signal text-paper text-[14px] font-semibold px-5 h-10 rounded-ui hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity shrink-0"
+              >
+                {state === 'saving' ? 'Saving…' : 'Save'}
+              </button>
             </div>
+            {error && <p className="text-[13px] text-signal mt-2">{error}</p>}
+            {state === 'saved' && !error && (
+              <p className="text-[13px] text-settled mt-2">Saved.</p>
+            )}
+            {!error && state !== 'saved' && (
+              <p className="text-[13px] text-ink-3 mt-2 leading-relaxed">
+                What the agent calls you, and what shows in the sidebar.
+              </p>
+            )}
           </div>
-        </div>
+
+          <Fact
+            label="Email"
+            value={user?.email || 'Not set'}
+            note="Can’t be changed here yet. Write in if you need it moved."
+          />
+
+          <Fact
+            label="Plan"
+            value={user?.subscription?.tier
+              ? user.subscription.tier[0].toUpperCase() + user.subscription.tier.slice(1)
+              : 'Free'}
+            note="There is no billing yet, so nothing is charged and nothing is metered."
+          />
+
+          {typeof user?.totalCallsMade === 'number' && (
+            <Fact label="Calls made" value={new Intl.NumberFormat('en-IN').format(user.totalCallsMade)} />
+          )}
+        </section>
+
+        <section className="mb-9">
+          <h2 className="font-display text-[18px] font-semibold mb-1">Keys and the API</h2>
+          <p className="text-[14px] text-ink-2 leading-relaxed mb-3">
+            Bring your own Deepgram, Groq or Cartesia keys, and read the streaming API.
+          </p>
+          <Link to="/developer" className="text-[14px] text-signal hover:underline">
+            Open developer settings →
+          </Link>
+        </section>
+
+        <section className="border-t border-rule pt-6">
+          <button
+            onClick={() => { signOut().catch(e => console.error('Sign out error:', e)); }}
+            className="border border-rule text-[14px] px-4 h-9 rounded-ui hover:border-rule-strong transition-colors"
+          >
+            Sign out
+          </button>
+        </section>
       </div>
     </div>
   );

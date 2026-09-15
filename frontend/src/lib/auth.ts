@@ -136,6 +136,34 @@ export const getCurrentUser = (): User | null => {
 
 
 // User profile functions
+/**
+ * Change the display name.
+ *
+ * `PUT /auth/profile` has existed on the server the whole time and accepts
+ * exactly one field, `name`. Nothing in the app had ever called it, which is
+ * why Settings shipped a Save button wired to nothing.
+ */
+export const updateProfileName = async (name: string): Promise<User> => {
+  const token = getStoredToken();
+  if (!token) throw new Error('No authentication token');
+
+  const response = await fetch(`${getApiBaseUrl()}/auth/profile`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || 'Could not save your name');
+  }
+
+  return (await response.json()).user;
+};
+
 export const getUserProfile = async (): Promise<User | null> => {
   const token = getStoredToken();
   if (!token) return null;
